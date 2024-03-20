@@ -1,10 +1,13 @@
+#include "mempool/qcu_mempool.h"
 #include "qcd/qcu_wilson_dslash.cuh"
 #include "qcu.h"
 #include "qcu_macro.cuh"
 #include "qcu_storage/qcu_storage.cuh"
+
 #include <cuda.h>
 
 #define PRINT_EXEC_TIME
+#define PRINT_ALLOCATED_MEM_SIZE
 
 BEGIN_NAMESPACE(qcu)
 enum DslashType { QCU_DSLASH_WILSON = 0, QCU_DSLASH_CLOVER = 1 };
@@ -44,13 +47,15 @@ protected:
   cudaEvent_t startEvent_;
   cudaEvent_t stopEvent_;
 
+  QcuMemPool *memPool_;
+
 public:
   Qcu(int Lx, int Ly, int Lz, int Lt, int Nx, int Ny, int Nz, int Nt, double mass = 0.0)
       : Lx_(Lx), Ly_(Ly), Lz_(Lz), Lt_(Lt), procNx_(Nx), procNy_(Ny), procNz_(Nz), procNt_(Nt),
         mass_(mass), kappa_(1.0 / (2.0 * (4.0 + mass))), gaugeLoaded_(false), inputGauge_(nullptr),
         coalescedGauge_(nullptr), coalescedFermionIn_(nullptr), coalescedFermionOut_(nullptr),
         fermionIn_(nullptr), fermionOut_(nullptr), cloverMatrix_(nullptr),
-        cloverInvMatrix_(nullptr) {
+        cloverInvMatrix_(nullptr), memPool_(nullptr) {
     CHECK_CUDA(cudaStreamCreate(&stream1_));
     CHECK_CUDA(cudaStreamCreate(&stream2_));
     CHECK_CUDA(cudaEventCreate(&startEvent_));
@@ -58,6 +63,8 @@ public:
     int vol = Lx_ * Ly_ * Lz_ * Lt_ / 2;
     CHECK_CUDA(cudaMalloc(&coalescedFermionIn_, sizeof(double) * vol * 2 * Ns * Nc));
     CHECK_CUDA(cudaMalloc(&coalescedFermionOut_, sizeof(double) * vol * 2 * Ns * Nc));
+
+    memPoolInit();
   }
   virtual ~Qcu() {
     CHECK_CUDA(cudaStreamDestroy(stream1_));
@@ -77,8 +84,47 @@ public:
       CHECK_CUDA(cudaFree(coalescedFermionOut_));
       coalescedFermionOut_ = nullptr;
     }
+    if (memPool_ != nullptr) {
+      delete memPool_;
+      memPool_ = nullptr;
+    }
   }
+  void memPoolInit() {
+    memPool_ = new QcuMemPool();
+    int interProcBufferLength[Nd] = {0, 0, 0, 0};
+    int singleVecLength = Ns * Nc;
+    for (int i = 0; i < Nd; i++) {
+      int temp[Nd] = {Lx_, Ly_, Lz_, Lt_};
+      int res = 1;
+      temp[i] = 1;
+      for (int j = 0; j < Nd; j++) {
+        res *= temp[j];
+      }
+      res >>= 1; // for even odd precondition
+      res *= singleVecLength;
+      interProcBufferLength[i] = res;
+      // printf("[%d %d %d %d] res = %d\n", temp[0], temp[1], temp[2], temp[3], res);
+    }
+    if (procNx_ == 1)
+      interProcBufferLength[0] = 0;
+    if (procNy_ == 1)
+      interProcBufferLength[1] = 0;
+    if (procNz_ == 1)
+      interProcBufferLength[2] = 0;
+    if (procNt_ == 1)
+      interProcBufferLength[3] = 0;
 
+    memPool_->allocateAllVector(interProcBufferLength[0], interProcBufferLength[1],
+                                interProcBufferLength[2], interProcBufferLength[3],
+                                sizeof(double) * 2);
+#ifdef PRINT_ALLOCATED_MEM_SIZE
+    printf("========================\n");
+    printf("Allocated memory size : \n x dim = %d\n y dim = %d\n z dim = %d\n t dim = %d\n ",
+           interProcBufferLength[0], interProcBufferLength[1], interProcBufferLength[2],
+           interProcBufferLength[3]);
+    printf("========================\n");
+#endif
+  }
   // TODO : load gauge
   void loadGauge(void *gauge);
   void shiftFermionStorage(void *dst, void *src, int shiftDir);
