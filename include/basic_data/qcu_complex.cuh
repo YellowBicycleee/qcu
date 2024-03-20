@@ -2,10 +2,11 @@
 
 #include <cstdio>
 
-template <typename _Float>
+// template <typename _Float>
 class Complex
 {
 private:
+    typedef double _Float;
     _Float real_;
     _Float imag_;
 

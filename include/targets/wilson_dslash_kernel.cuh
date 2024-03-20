@@ -2,7 +2,7 @@
 
 #include "basic_data/qcu_complex.cuh"
 #include "basic_data/qcu_point.cuh"
-#include "qcu_macro.h"
+#include "qcu_macro.cuh"
 #include "targets/dslash_complex_product.cuh"
 
 static __global__ void dslashKernelFunc(void *gauge, void *fermion_in, void *fermion_out, int Lx,
@@ -12,6 +12,10 @@ static __global__ void dslashKernelFunc(void *gauge, void *fermion_in, void *fer
   Lx >>= 1;
 
   int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+
+  // if (thread_id == 0) {
+  //   printf("grid[4] = {%d, %d, %d, %d}\n", grid_x, grid_y, grid_z, grid_t);
+  // }
   int t = thread_id / (Lz * Ly * Lx);
   int z = thread_id % (Lz * Ly * Lx) / (Ly * Lx);
   int y = thread_id % (Ly * Lx) / Lx;
@@ -34,87 +38,87 @@ static __global__ void dslashKernelFunc(void *gauge, void *fermion_in, void *fer
 
   // \mu = 1
   // loadGauge(u_local, gauge, 0, p, Lx, Ly, Lz, Lt);
-  loadGaugeCoalesced(u_local, gauge, X_DIRECTION, p, Lx, Ly, Lz, Lt);
-  move_point = p.move(FRONT, X_DIRECTION, Lx, Ly, Lz, Lt);
-  loadVectorCoalesced(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
+  loadGauge(u_local, gauge, X_DIM, p, Lx, Ly, Lz, Lt);
+  move_point = p.move(FWD, X_DIM, Lx, Ly, Lz, Lt);
+  loadVector(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
   // x front    x == Lx-1 && parity != eo
   coord_boundary = (grid_x > 1 && x == Lx - 1 && parity != eo) ? Lx - 1 : Lx;
   if (x < coord_boundary) {
-    spinor_gauge_mul_add_vec<X_DIRECTION, FRONT>(u_local, src_local, dst_local, flag);
+    spinor_gauge_mul_add_vec<X_DIM, FWD>(u_local, src_local, dst_local, flag);
   }
 
   // x back   x==0 && parity == eo
-  move_point = p.move(BACK, X_DIRECTION, Lx, Ly, Lz, Lt);
-  loadGaugeCoalesced(u_local, gauge, X_DIRECTION, move_point, Lx, Ly, Lz, Lt);
-  loadVectorCoalesced(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
+  move_point = p.move(BWD, X_DIM, Lx, Ly, Lz, Lt);
+  loadGauge(u_local, gauge, X_DIM, move_point, Lx, Ly, Lz, Lt);
+  loadVector(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
 
   coord_boundary = (grid_x > 1 && x == 0 && parity == eo) ? 1 : 0;
   if (x >= coord_boundary) {
-    spinor_gauge_mul_add_vec<X_DIRECTION, BACK>(u_local, src_local, dst_local, flag);
+    spinor_gauge_mul_add_vec<X_DIM, BWD>(u_local, src_local, dst_local, flag);
   }
 
   // \mu = 2
   // y front
-  loadGaugeCoalesced(u_local, gauge, Y_DIRECTION, p, Lx, Ly, Lz, Lt);
-  move_point = p.move(FRONT, Y_DIRECTION, Lx, Ly, Lz, Lt);
-  loadVectorCoalesced(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
+  loadGauge(u_local, gauge, Y_DIM, p, Lx, Ly, Lz, Lt);
+  move_point = p.move(FWD, Y_DIM, Lx, Ly, Lz, Lt);
+  loadVector(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
 
   coord_boundary = (grid_y > 1) ? Ly - 1 : Ly;
   if (y < coord_boundary) {
-    spinor_gauge_mul_add_vec<Y_DIRECTION, FRONT>(u_local, src_local, dst_local, flag);
+    spinor_gauge_mul_add_vec<Y_DIM, FWD>(u_local, src_local, dst_local, flag);
   }
 
   // y back
-  move_point = p.move(BACK, Y_DIRECTION, Lx, Ly, Lz, Lt);
-  loadGaugeCoalesced(u_local, gauge, Y_DIRECTION, move_point, Lx, Ly, Lz, Lt);
-  loadVectorCoalesced(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
+  move_point = p.move(BWD, Y_DIM, Lx, Ly, Lz, Lt);
+  loadGauge(u_local, gauge, Y_DIM, move_point, Lx, Ly, Lz, Lt);
+  loadVector(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
 
   coord_boundary = (grid_y > 1) ? 1 : 0;
   if (y >= coord_boundary) {
-    spinor_gauge_mul_add_vec<Y_DIRECTION, BACK>(u_local, src_local, dst_local, flag);
+    spinor_gauge_mul_add_vec<Y_DIM, BWD>(u_local, src_local, dst_local, flag);
   }
 
   // \mu = 3
   // z front
-  loadGaugeCoalesced(u_local, gauge, Z_DIRECTION, p, Lx, Ly, Lz, Lt);
-  move_point = p.move(FRONT, Z_DIRECTION, Lx, Ly, Lz, Lt);
-  loadVectorCoalesced(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
+  loadGauge(u_local, gauge, Z_DIM, p, Lx, Ly, Lz, Lt);
+  move_point = p.move(FWD, Z_DIM, Lx, Ly, Lz, Lt);
+  loadVector(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
   coord_boundary = (grid_z > 1) ? Lz - 1 : Lz;
   if (z < coord_boundary) {
-    spinor_gauge_mul_add_vec<Z_DIRECTION, FRONT>(u_local, src_local, dst_local, flag);
+    spinor_gauge_mul_add_vec<Z_DIM, FWD>(u_local, src_local, dst_local, flag);
   }
 
   // z back
-  move_point = p.move(BACK, Z_DIRECTION, Lx, Ly, Lz, Lt);
-  loadGaugeCoalesced(u_local, gauge, Z_DIRECTION, move_point, Lx, Ly, Lz, Lt);
-  loadVectorCoalesced(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
+  move_point = p.move(BWD, Z_DIM, Lx, Ly, Lz, Lt);
+  loadGauge(u_local, gauge, Z_DIM, move_point, Lx, Ly, Lz, Lt);
+  loadVector(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
 
   coord_boundary = (grid_z > 1) ? 1 : 0;
   if (z >= coord_boundary) {
-    spinor_gauge_mul_add_vec<Z_DIRECTION, BACK>(u_local, src_local, dst_local, flag);
+    spinor_gauge_mul_add_vec<Z_DIM, BWD>(u_local, src_local, dst_local, flag);
   }
 
   // t: front
   // loadGauge(u_local, gauge, 3, p, Lx, Ly, Lz, Lt);
-  loadGaugeCoalesced(u_local, gauge, T_DIRECTION, p, Lx, Ly, Lz, Lt);
-  move_point = p.move(FRONT, T_DIRECTION, Lx, Ly, Lz, Lt);
-  loadVectorCoalesced(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
+  loadGauge(u_local, gauge, T_DIM, p, Lx, Ly, Lz, Lt);
+  move_point = p.move(FWD, T_DIM, Lx, Ly, Lz, Lt);
+  loadVector(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
 
   coord_boundary = (grid_t > 1) ? Lt - 1 : Lt;
   if (t < coord_boundary) {
-    spinor_gauge_mul_add_vec<T_DIRECTION, FRONT>(u_local, src_local, dst_local, flag);
+    spinor_gauge_mul_add_vec<T_DIM, FWD>(u_local, src_local, dst_local, flag);
   }
 
   // t: back
-  move_point = p.move(BACK, 3, Lx, Ly, Lz, Lt);
-  loadGaugeCoalesced(u_local, gauge, T_DIRECTION, move_point, Lx, Ly, Lz, Lt);
-  loadVectorCoalesced(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
+  move_point = p.move(BWD, T_DIM, Lx, Ly, Lz, Lt);
+  loadGauge(u_local, gauge, T_DIM, move_point, Lx, Ly, Lz, Lt);
+  loadVector(src_local, fermion_in, move_point, Lx, Ly, Lz, Lt);
 
   coord_boundary = (grid_t > 1) ? 1 : 0;
   if (t >= coord_boundary) {
-    spinor_gauge_mul_add_vec<T_DIRECTION, BACK>(u_local, src_local, dst_local, flag);
+    spinor_gauge_mul_add_vec<T_DIM, BWD>(u_local, src_local, dst_local, flag);
   }
 
   // store result
-  storeVectorCoalesced(dst_local, fermion_out, p, Lx, Ly, Lz, Lt);
+  storeVector(dst_local, fermion_out, p, Lx, Ly, Lz, Lt);
 }

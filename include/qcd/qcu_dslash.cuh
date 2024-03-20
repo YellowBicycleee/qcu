@@ -1,7 +1,7 @@
 #pragma once
 
-#include "interface/qcu.h"
-#include "qcu_macro.h"
+#include "qcu.h"
+#include "qcu_macro.cuh"
 #include <cuda.h>
 
 BEGIN_NAMESPACE(qcu)
@@ -13,15 +13,20 @@ struct DslashParam {
   int Lt;
   int parity;
 
+  int Nx;
+  int Ny;
+  int Nz;
+  int Nt;
+
   void *fermionIn;
   void *fermionOut;
   void *gauge;
 
   // constructor
   DslashParam(void *pFermionIn, void *pFermionOut, void *pGauge, int pLx, int pLy, int pLz, int pLt,
-              int p_parity)
+              int p_parity, int pNx, int pNy, int pNz, int pNt)
       : fermionIn(pFermionIn), fermionOut(pFermionOut), gauge(pGauge), Lx(pLx), Ly(pLy), Lz(pLz),
-        Lt(pLt), parity(p_parity) {}
+        Lt(pLt), parity(p_parity), Nx(pNx), Ny(pNy), Nz(pNz), Nt(pNt) {}
 
   // copy constructor
   DslashParam(const DslashParam &rhs)
@@ -51,8 +56,8 @@ protected:
   cudaStream_t dslashStream_; // stream for dslash kernel, default stream is NULL
 
 public:
-  Dslash(DslashParam &param, int blockSize = 256, cudaStream_t dslashStream = NULL)
-      : dslashParam_(&param), blockSize_(blockSize), dslashStream_(dslashStream) {}
+  Dslash(DslashParam* param, int blockSize = 256, cudaStream_t dslashStream = NULL)
+      : dslashParam_(param), blockSize_(blockSize), dslashStream_(dslashStream) {}
 
   // use this function to call kernel function, this function donnot sync inside
   virtual void apply(int daggerFlag) = 0;

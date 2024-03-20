@@ -3,15 +3,25 @@
 // #include <cstdio>
 #include "qcu_macro.cuh"
 
-enum MemoryStorage {
-  NON_COALESCED = 0,
-  COALESCED = 1,
-};
+// enum MemoryStorage {
+//   NON_COALESCED = 0,
+//   COALESCED = 1,
+// };
 
-enum ShiftDirection {
-  TO_COALESCE = 0,
-  TO_NON_COALESCE = 1,
-};
+// enum ShiftDirection {
+//   TO_COALESCE = 0,
+//   TO_NON_COALESCE = 1,
+// };
+
+
+// ----
+// #include "qcu_shift_storage_complex.cuh"
+#include <cstdio>
+#include "qcu_macro.cuh"
+
+
+#define WARP_SIZE 32
+#define BLOCK_SIZE 256
 
 // DONE: WARP version, no sync  
 static __device__ __forceinline__ void storeVectorBySharedMemory(void* origin, void* result) {
@@ -166,39 +176,6 @@ static __global__ void shift_gauge_to_coalesed (void* dst_gauge, void* src_gauge
 
 
 
-
-void shiftVectorStorageTwoDouble(void* dst_vec, void* src_vec, int shift_direction, int Lx, int Ly, int Lz, int Lt) {
-  int vol = Lx * Ly * Lz * Lt;
-  int half_vol = vol / 2;
-
-  int block_size = BLOCK_SIZE;
-  int grid_size = (half_vol + block_size - 1) / block_size;
-
-  if (shift_direction == TO_COALESCE) {
-    shift_vector_to_coalesed <<<grid_size, block_size>>>(dst_vec, src_vec, Lx, Ly, Lz, Lt);
-    checkCudaErrors(cudaDeviceSynchronize());
-  } else {
-    shift_vector_to_noncoalesed <<<grid_size, block_size>>>(dst_vec, src_vec, Lx, Ly, Lz, Lt);
-    checkCudaErrors(cudaDeviceSynchronize());
-  }
-}
-
-
-void shiftGaugeStorageTwoDouble(void* dst_vec, void* src_vec, int shift_direction, int Lx, int Ly, int Lz, int Lt) {
-  int vol = Lx * Ly * Lz * Lt;
-  int half_vol = vol / 2;
-
-  int block_size = BLOCK_SIZE;
-  int grid_size = (half_vol + block_size - 1) / block_size;
-
-  if (shift_direction == TO_COALESCE) {
-    shift_gauge_to_coalesed <<<grid_size, block_size>>>(dst_vec, src_vec, Lx, Ly, Lz, Lt);
-    checkCudaErrors(cudaDeviceSynchronize());
-  }
-}
-
-
-
 // TODO: optimize
 static __global__ void shift_clover_to_coalesced (void* dst_vec, void* src_vec, \
                                                   int Lx, int Ly, int Lz, int Lt \
@@ -224,22 +201,5 @@ static __global__ void shift_clover_to_coalesced (void* dst_vec, void* src_vec, 
     dst_ptr[0] = local_clover[2 * i];
     dst_ptr[1] = local_clover[2 * i + 1];
     dst_ptr += 2 * half_vol;
-  }
-}
-
-
-// TODO: non coalesced
-void shiftCloverStorageTwoDouble(void* dst_vec, void* src_vec, int shift_direction,\
-                                 int Lx, int Ly, int Lz, int Lt \
-) {
-  int vol = Lx * Ly * Lz * Lt;
-  int half_vol = vol / 2;
-
-  int block_size = BLOCK_SIZE;
-  int grid_size = (half_vol + block_size - 1) / block_size;
-
-  if (shift_direction == TO_COALESCE) {
-    shift_clover_to_coalesced <<<grid_size, block_size>>>(dst_vec, src_vec, Lx, Ly, Lz, Lt);
-    checkCudaErrors(cudaDeviceSynchronize());
   }
 }

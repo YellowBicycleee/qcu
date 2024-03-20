@@ -4,8 +4,20 @@
 #define END_NAMESPACE(_) }
 
 enum DIMS { X_DIM = 0, Y_DIM, Z_DIM, T_DIM, Nd };
-enum DIRS { BWD = 0, FWD, DIRECTIONS };
+
+enum DIRS { BWD = 0, FWD = 1, DIRECTIONS };
+
 enum PRECONDITION { PRECONDITION_OFF = 0, EVEN_ODD_PRECONDITION };
+
+enum MemoryStorage {
+  NON_COALESCED = 0,
+  COALESCED = 1,
+};
+
+enum ShiftDirection {
+  TO_COALESCE = 0,
+  TO_NON_COALESCE = 1,
+};
 
 constexpr int Nc = 3;
 constexpr int Ns = 4;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "basic_data/qcu_complex.cuh"
+#include "targets/public_kernels.cuh"
 #include "qcu_macro.cuh"
 
 // separate loops
@@ -172,9 +173,9 @@ spinor_gauge_mul_add_vec<Z_DIM, BWD>(Complex *u_local, Complex *src_local, Compl
                u_local[j * Nc + i].conj(); // transpose and conj
     }
     dst_local[0 * Nc + i] += temp1;
-    dst_local[2 * Nc + i] += temp1.multipy_minus_i() * flag;
+    dst_local[2 * Nc + i] += temp1.multiply_minus_i() * flag;
     dst_local[1 * Nc + i] += temp2;
-    dst_local[3 * Nc + i] += temp2.multipy_i() * flag;
+    dst_local[3 * Nc + i] += temp2.multiply_i() * flag;
   }
 }
 
