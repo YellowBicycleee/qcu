@@ -1,16 +1,16 @@
+#include "comm/qcu_communicator.h"
 #include "mempool/qcu_mempool.h"
 #include "qcd/qcu_wilson_dslash.cuh"
 #include "qcu.h"
 #include "qcu_macro.cuh"
 #include "qcu_storage/qcu_storage.cuh"
-
 #include <cuda.h>
 
 #define PRINT_EXEC_TIME
 #define PRINT_ALLOCATED_MEM_SIZE
 
 BEGIN_NAMESPACE(qcu)
-enum DslashType { QCU_DSLASH_WILSON = 0, QCU_DSLASH_CLOVER = 1 };
+// enum DslashType { QCU_DSLASH_WILSON = 0, QCU_DSLASH_CLOVER = 1 };
 
 class Qcu {
 protected:
@@ -28,6 +28,7 @@ protected:
   int procNy_;
   int procNz_;
   int procNt_;
+  int boundaryLength_[Nd];
 
   void *inputGauge_;
 
@@ -48,6 +49,8 @@ protected:
   cudaEvent_t stopEvent_;
 
   QcuMemPool *memPool_;
+  MsgHandler *msgHandler_;
+  QcuComm *qcuComm_;
 
 public:
   Qcu(int Lx, int Ly, int Lz, int Lt, int Nx, int Ny, int Nz, int Nt, double mass = 0.0)
@@ -55,7 +58,7 @@ public:
         mass_(mass), kappa_(1.0 / (2.0 * (4.0 + mass))), gaugeLoaded_(false), inputGauge_(nullptr),
         coalescedGauge_(nullptr), coalescedFermionIn_(nullptr), coalescedFermionOut_(nullptr),
         fermionIn_(nullptr), fermionOut_(nullptr), cloverMatrix_(nullptr),
-        cloverInvMatrix_(nullptr), memPool_(nullptr) {
+        cloverInvMatrix_(nullptr), memPool_(nullptr), msgHandler_(nullptr), qcuComm_(nullptr) {
     CHECK_CUDA(cudaStreamCreate(&stream1_));
     CHECK_CUDA(cudaStreamCreate(&stream2_));
     CHECK_CUDA(cudaEventCreate(&startEvent_));
@@ -63,7 +66,8 @@ public:
     int vol = Lx_ * Ly_ * Lz_ * Lt_ / 2;
     CHECK_CUDA(cudaMalloc(&coalescedFermionIn_, sizeof(double) * vol * 2 * Ns * Nc));
     CHECK_CUDA(cudaMalloc(&coalescedFermionOut_, sizeof(double) * vol * 2 * Ns * Nc));
-
+    msgHandler_ = new MsgHandler();
+    qcuComm_ = new QcuComm(procNx_, procNy_, procNz_, procNt_);
     memPoolInit();
   }
   virtual ~Qcu() {
@@ -88,51 +92,42 @@ public:
       delete memPool_;
       memPool_ = nullptr;
     }
+    if (msgHandler_ != nullptr) {
+      delete msgHandler_;
+      msgHandler_ = nullptr;
+    }
+    if (qcuComm_ != nullptr) {
+      delete qcuComm_;
+      qcuComm_ = nullptr;
+    }
   }
   void memPoolInit() {
     memPool_ = new QcuMemPool();
-    int interProcBufferLength[Nd] = {0, 0, 0, 0};
     int singleVecLength = Ns * Nc;
-    for (int i = 0; i < Nd; i++) {
-      int temp[Nd] = {Lx_, Ly_, Lz_, Lt_};
-      int res = 1;
-      temp[i] = 1;
-      for (int j = 0; j < Nd; j++) {
-        res *= temp[j];
-      }
-      res >>= 1; // for even odd precondition
-      res *= singleVecLength;
-      interProcBufferLength[i] = res;
-      // printf("[%d %d %d %d] res = %d\n", temp[0], temp[1], temp[2], temp[3], res);
-    }
-    if (procNx_ == 1)
-      interProcBufferLength[0] = 0;
-    if (procNy_ == 1)
-      interProcBufferLength[1] = 0;
-    if (procNz_ == 1)
-      interProcBufferLength[2] = 0;
-    if (procNt_ == 1)
-      interProcBufferLength[3] = 0;
 
-    memPool_->allocateAllVector(interProcBufferLength[0], interProcBufferLength[1],
-                                interProcBufferLength[2], interProcBufferLength[3],
-                                sizeof(double) * 2);
+    boundaryLength_[0] = procNx_ == 1 ? 0 : Ly_ * Lz_ * Lt_ / 2 * singleVecLength;
+    boundaryLength_[1] = procNy_ == 1 ? 0 : Lx_ * Lz_ * Lt_ / 2 * singleVecLength;
+    boundaryLength_[2] = procNz_ == 1 ? 0 : Lx_ * Ly_ * Lt_ / 2 * singleVecLength;
+    boundaryLength_[3] = procNt_ == 1 ? 0 : Lx_ * Ly_ * Lz_ / 2 * singleVecLength;
+
+    memPool_->allocateAllVector(boundaryLength_[0], boundaryLength_[1], boundaryLength_[2],
+                                boundaryLength_[3], sizeof(double) * 2);
 #ifdef PRINT_ALLOCATED_MEM_SIZE
     printf("========================\n");
     printf("Allocated memory size : \n x dim = %d\n y dim = %d\n z dim = %d\n t dim = %d\n ",
-           interProcBufferLength[0], interProcBufferLength[1], interProcBufferLength[2],
-           interProcBufferLength[3]);
+           boundaryLength_[0], boundaryLength_[1], boundaryLength_[2], boundaryLength_[3]);
     printf("========================\n");
 #endif
   }
-  // TODO : load gauge
+
   void loadGauge(void *gauge);
   void shiftFermionStorage(void *dst, void *src, int shiftDir);
   // TODO : modify lattice size
-  void modifyLattice(int Lx, int Ly, int Lz, int Lt) {}
+  // void modifyLattice(int Lx, int Ly, int Lz, int Lt) {}
 
   // TODO : dslash wilson
   virtual void wilsonDslash(void *fermionOut, void *fermionIn, int parity);
+  virtual void wilsonDslashMultiProc(void *fermionOut, void *fermionIn, int parity);
   virtual void wilsonMatMul() {}
   // TODO : dslash clover
   virtual void cloverDslash() {}
@@ -142,16 +137,19 @@ public:
 };
 
 void Qcu::wilsonDslash(void *fermionOut, void *fermionIn, int parity) {
+  int daggerFlag = 0;
+
   fermionIn_ = fermionIn;
   fermionOut_ = fermionOut;
   shiftFermionStorage(coalescedFermionIn_, fermionIn_, TO_COALESCE);
 
   DslashParam dslashParam(coalescedFermionIn_, coalescedFermionOut_, coalescedGauge_, Lx_, Ly_, Lz_,
-                          Lt_, parity, procNx_, procNy_, procNz_, procNt_);
+                          Lt_, parity, procNx_, procNy_, procNz_, procNt_, daggerFlag, memPool_, msgHandler_,
+                          qcuComm_);
 
   CHECK_CUDA(cudaEventRecord(startEvent_, stream1_));
   WilsonDslash dslash(&dslashParam, 256, stream1_);
-  dslash.apply(0);
+  dslash.apply();
   CHECK_CUDA(cudaEventRecord(stopEvent_, stream1_));
   CHECK_CUDA(cudaEventSynchronize(stopEvent_));
 
@@ -161,6 +159,37 @@ void Qcu::wilsonDslash(void *fermionOut, void *fermionIn, int parity) {
   printf("Recorded time : %f s\n", elapsedTime / 1000);
 #endif
 
+  shiftFermionStorage(fermionOut_, coalescedFermionOut_, TO_NON_COALESCE);
+}
+
+void Qcu::wilsonDslashMultiProc(void *fermionOut, void *fermionIn, int parity) {
+  // if (procNx_ == 1 && procNy_ == 1 && procNz_ == 1 && procNt_ == 1) {
+  //   return;
+  // }
+  // shiftStorage
+  int daggerFlag = 0;
+  fermionIn_ = fermionIn;
+  fermionOut_ = fermionOut;
+  shiftFermionStorage(coalescedFermionIn_, fermionIn_, TO_COALESCE);
+  DslashParam dslashParam(coalescedFermionIn_, coalescedFermionOut_, coalescedGauge_, Lx_, Ly_, Lz_,
+                          Lt_, parity, procNx_, procNy_, procNz_, procNt_, daggerFlag, memPool_, msgHandler_,
+                          qcuComm_);
+  CHECK_CUDA(cudaEventRecord(startEvent_, stream1_));
+  WilsonDslash dslash(&dslashParam, 256, stream1_, stream2_);
+
+  dslash.preApply();
+  dslash.apply();
+  dslash.postApply();
+
+  CHECK_CUDA(cudaEventRecord(stopEvent_, stream1_));
+  CHECK_CUDA(cudaEventSynchronize(stopEvent_));
+
+#ifdef PRINT_EXEC_TIME
+  float elapsedTime;
+  CHECK_CUDA(cudaEventElapsedTime(&elapsedTime, startEvent_, stopEvent_));
+  printf("Recorded time : %f s\n", elapsedTime / 1000);
+#endif
+  // shiftStorage
   shiftFermionStorage(fermionOut_, coalescedFermionOut_, TO_NON_COALESCE);
 }
 
@@ -204,7 +233,8 @@ void destroyQcu() {
 
 void dslashQcu(void *fermion_out, void *fermion_in, void *gauge, QcuParam *param, int parity) {
   qcu_ptr->loadGauge(gauge);
-  qcu_ptr->wilsonDslash(fermion_out, fermion_in, parity);
+  // qcu_ptr->wilsonDslash(fermion_out, fermion_in, parity);
+  qcu_ptr->wilsonDslashMultiProc(fermion_out, fermion_in, parity);
 }
 
 void fullDslashQcu(void *fermion_out, void *fermion_in, void *gauge, QcuParam *param,

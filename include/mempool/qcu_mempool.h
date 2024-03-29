@@ -56,21 +56,26 @@ public:
       }
     }
 
-    for (int dim = 0; dim < Nd; dim++) {
-      for (int dir = 0; dir < DIRECTIONS; dir++) {
-        d_send_buffer[dim][dir] = nullptr;
-        d_recv_buffer[dim][dir] = nullptr;
-        h_send_buffer[dim][dir] = nullptr;
-        h_recv_buffer[dim][dir] = nullptr;
-      }
-    }
+    // for (int dim = 0; dim < Nd; dim++) {
+    //   for (int dir = 0; dir < DIRECTIONS; dir++) {
+    //     d_send_buffer[dim][dir] = nullptr;
+    //     d_recv_buffer[dim][dir] = nullptr;
+    //     h_send_buffer[dim][dir] = nullptr;
+    //     h_recv_buffer[dim][dir] = nullptr;
+    //   }
+    // }
   }
 
-  void allocateAllVector(int xDimLength, int yDimLength, int zDimLength, int tDimLength, size_t typeSize) {
-    if (xDimLength > 0) allocateVector(X_DIM, typeSize, xDimLength);
-    if (yDimLength > 0) allocateVector(Y_DIM, typeSize, yDimLength);
-    if (zDimLength > 0) allocateVector(Z_DIM, typeSize, zDimLength);
-    if (tDimLength > 0) allocateVector(T_DIM, typeSize, tDimLength);
+  void allocateAllVector(int xDimLength, int yDimLength, int zDimLength, int tDimLength,
+                         size_t typeSize) {
+    if (xDimLength > 0)
+      allocateVector(X_DIM, typeSize, xDimLength);
+    if (yDimLength > 0)
+      allocateVector(Y_DIM, typeSize, yDimLength);
+    if (zDimLength > 0)
+      allocateVector(Z_DIM, typeSize, zDimLength);
+    if (tDimLength > 0)
+      allocateVector(T_DIM, typeSize, tDimLength);
   }
   // TODO: memory pool allocation
   void allocateVector(int dim, size_t typeSize, size_t length) {
@@ -79,11 +84,15 @@ public:
     }
     for (int dir = 0; dir < DIRECTIONS; dir++) {
       // HOST MEM
+      CHECK_CUDA(cudaMallocHost(&h_send_buffer[dim][dir], typeSize * length));
+      CHECK_CUDA(cudaMallocHost(&h_recv_buffer[dim][dir], typeSize * length));
+      // DEVICE MEM
       CHECK_CUDA(cudaMalloc(&d_send_buffer[dim][dir], typeSize * length));
       CHECK_CUDA(cudaMalloc(&d_recv_buffer[dim][dir], typeSize * length));
-      // DEVICE MEM
-      cudaMalloc(&d_send_buffer[dim][dir], typeSize * length);
-      cudaMalloc(&d_recv_buffer[dim][dir], typeSize * length);
+#ifdef DEBUG
+      printf("size = %u send / recv buffer allocated\ndim = %d, sendbuffer = %p, recvbuffer = %p\n",
+             typeSize * length, dim, d_send_buffer[dim][dir], d_recv_buffer[dim][dir]);
+#endif
     }
   }
   // TODO: memory pool deallocation
@@ -94,11 +103,11 @@ public:
     for (int dir = 0; dir < DIRECTIONS; dir++) {
       // HOST MEM
       if (h_send_buffer[dim][dir] != nullptr) {
-        CHECK_CUDA(cudaFree(h_send_buffer[dim][dir]));
+        CHECK_CUDA(cudaFreeHost(h_send_buffer[dim][dir]));
         h_send_buffer[dim][dir] = nullptr;
       }
       if (h_recv_buffer[dim][dir] != nullptr) {
-        CHECK_CUDA(cudaFree(h_recv_buffer[dim][dir]));
+        CHECK_CUDA(cudaFreeHost(h_recv_buffer[dim][dir]));
         h_recv_buffer[dim][dir] = nullptr;
       }
       // DEVICE MEM
@@ -113,55 +122,30 @@ public:
     }
   }
 
-  void* getHostSendBuffer(int dim, int dir) {
+  void *getHostSendBuffer(int dim, int dir) {
     if (dim < 0 || dim >= Nd || dir < 0 || dir >= DIRECTIONS) {
       return nullptr;
     }
     return h_send_buffer[dim][dir];
   }
-  void* getHostRecvBuffer(int dim, int dir) {
+  void *getHostRecvBuffer(int dim, int dir) {
     if (dim < 0 || dim >= Nd || dir < 0 || dir >= DIRECTIONS) {
       return nullptr;
     }
     return h_recv_buffer[dim][dir];
   }
-  void* getDeviceSendBuffer(int dim, int dir) {
+  void *getDeviceSendBuffer(int dim, int dir) {
     if (dim < 0 || dim >= Nd || dir < 0 || dir >= DIRECTIONS) {
       return nullptr;
     }
     return d_send_buffer[dim][dir];
   }
-  void* getDeviceRecvBuffer(int dim, int dir) {
+  void *getDeviceRecvBuffer(int dim, int dir) {
     if (dim < 0 || dim >= Nd || dir < 0 || dir >= DIRECTIONS) {
       return nullptr;
     }
     return d_recv_buffer[dim][dir];
   }
-
-  // void* getHostGaugeSendBuffer(int dim) {
-  //   if (dim < 0 || dim >= Nd) {
-  //     return nullptr;
-  //   }
-  //   return h_gauge_buffer[dim][0];
-  // }
-  // void* getHostGaugeRecvBuffer(int dim) {
-  //   if (dim < 0 || dim >= Nd) {
-  //     return nullptr;
-  //   }
-  //   return h_gauge_buffer[dim][1];
-  // }
-  // void* getDeviceGaugeSendBuffer(int dim) {
-  //   if (dim < 0 || dim >= Nd) {
-  //     return nullptr;
-  //   }
-  //   return d_gauge_buffer[dim][0];
-  // }
-  // void* getDeviceGaugeRecvBuffer(int dim) {
-  //   if (dim < 0 || dim >= Nd) {
-  //     return nullptr;
-  //   }
-  //   return d_gauge_buffer[dim][1];
-  // }
 
   ~QcuMemPool() {
     for (int i = 0; i < Nd; i++) {

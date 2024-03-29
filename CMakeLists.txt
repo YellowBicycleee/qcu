@@ -16,6 +16,7 @@ project(QCU LANGUAGES C CXX CUDA) # project name = ${PROJECT_NAME}
 
 add_library(qcu 
     SHARED
+    src/comm/qcu_communicator.cu
     src/qcd/qcu_wilson_dslash.cu
     src/qcu_storage/qcu_storage.cu
     src/qcu.cu

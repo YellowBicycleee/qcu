@@ -8,40 +8,35 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+BEGIN_NAMESPACE(qcu)
 
-BEDIN_NAMESPACE(qcu)
+// template <int _dim>
+// struct VectorDesc {
+//   int dimLen[_dim];
+//   /* data */
+// };
 
-struct QcuMatAdd {
+struct QcuVectorAdd {
+  typedef void *_genvector; // reserved for future use
+
+  // template <typename _T>
+  virtual _genvector operator()(_genvector result, _genvector operand1, _genvector operand2,
+                                int vectorLength, cudaStream_t stream = NULL) = 0;
+};
+
+struct QcuGEMV {
   typedef void *_genvector;
 
-public:
-  virtual _genvector operator()(_genvector operand1, _genvector operand2,
-                                _genvector result, cudaStream_t& stream = NULL) = 0;
+  _genvector matrix;
+  _genvector vector;
+
+  // TODO: GEMV
+  virtual void operator()(_genvector result, _genvector operand1, _genvector operand2,
+                                int parity = 0, cudaStream_t stream = NULL) {
+    printf("GEMV not implemented\n");
+  };
 };
 
-struct QcuMatMul {
-  typedef void *_genvector;
-
-public:
-  virtual _genvector operator()(_genvector operand1, _genvector operand2,
-                                _genvector result, cudaStream_t& stream = NULL) = 0;
-};
-
-struct QcuVectorAdd : public QcuMatrixAdd {
-private:
-  const int vectorLength;
-  void addKernel() { // TODO: add kernel
-    // call gpu kernel functions, and MPI comms
-  }
-
-public:
-  QcuVectorAdd(int vectorLength) : vectorLength(vectorLength) {}
-
-  virtual _genvector operator()(_genvector operand1, _genvector operand2,
-                                _genvector result, cudaStream_t& stream = NULL) // override
-  {
-    addKernel();
-  }
-};
 #endif
+
 END_NAMESPACE(qcu)

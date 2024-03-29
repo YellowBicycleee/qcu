@@ -1,5 +1,5 @@
 #pragma once
-
+#define DEBUG
 #define BEGIN_NAMESPACE(_) namespace _ {
 #define END_NAMESPACE(_) }
 
@@ -55,6 +55,15 @@ END_NAMESPACE(qcu)
     cudaError_t err = cmd;                                                                         \
     if (err != cudaSuccess) {                                                                      \
       fprintf(stderr, "CUDA error: %s\n", cudaGetErrorString(err));                                \
+      exit(1);                                                                                     \
+    }                                                                                              \
+  } while (0)
+
+#define CHECK_NCCL(cmd)                                                                             \
+  do {                                                                                             \
+    ncclResult_t err = cmd;                                                                        \
+    if (err != ncclSuccess) {                                                                      \
+      fprintf(stderr, "NCCL error: %s\n", ncclGetErrorString(err));                                 \
       exit(1);                                                                                     \
     }                                                                                              \
   } while (0)

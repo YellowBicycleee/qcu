@@ -1,8 +1,8 @@
 #pragma once
 
 #include "basic_data/qcu_complex.cuh"
-#include "targets/public_kernels.cuh"
 #include "qcu_macro.cuh"
+#include "targets/public_kernels.cuh"
 
 // separate loops
 template <int _dir, int _fb> // _dir from 0-3 means X-Z

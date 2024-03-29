@@ -1,59 +1,53 @@
-// #include <format>
+#pragma once
+
 #include "qcu_macro.cuh"
 #include <assert.h>
-// #include <iostream>
 #include <cstdio>
+#include <cuda.h>
 #include <mpi.h>
-// #define BEGIN_NAMESPACE(_) namespace _ {
-// #define END_NAMESPACE(_) }
-
-// enum DIMS { X_DIM = 0, Y_DIM, Z_DIM, T_DIM, Nd };
-// enum DIRS { FWD = 0, BWD, DIRECTIONS };
+#include <nccl.h>
 
 enum CommOption { USE_MPI = 0, USE_NCCL, USE_GPU_AWARE_MPI };
 
-#define MPI_CHECK(call)                                                        \
-  do {                                                                         \
-    int e = call;                                                              \
-    if (e != MPI_SUCCESS) {                                                    \
-      fprintf(stderr, "MPI error %d at %s:%d\n", e, __FILE__, __LINE__);       \
-      exit(1);                                                                 \
-    }                                                                          \
+#define MPI_CHECK(call)                                                                            \
+  do {                                                                                             \
+    int e = call;                                                                                  \
+    if (e != MPI_SUCCESS) {                                                                        \
+      fprintf(stderr, "MPI error %d at %s:%d\n", e, __FILE__, __LINE__);                           \
+      exit(1);                                                                                     \
+    }                                                                                              \
   } while (0)
+
+void Qcu_MPI_Wait_gpu_aware(MPI_Request *request, MPI_Status *status);
+void Qcu_MPI_Irecv_gpu_aware(void *buf, int count, MPI_Datatype datatype, int source, int tag,
+                             MPI_Comm comm, MPI_Request *request);
+void Qcu_MPI_Isend_gpu_aware(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+                             MPI_Comm comm, MPI_Request *request);
+void Qcu_MPI_Allreduce_gpu_aware(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
+                                 MPI_Op op, MPI_Comm comm);
 
 BEGIN_NAMESPACE(qcu)
 
-void Qcu_Init(int *argc, char ***argv) { MPI_CHECK(MPI_Init(argc, argv)); }
-
-void Qcu_Finalize() { MPI_CHECK(MPI_Finalize()); }
-
-void Qcu_Comm_rank(int *rank) {
-  MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, rank));
-}
-
-void Qcu_Comm_size(int *size) {
-  MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, size));
-}
-
-
-// QCU ALLREDUCE --- NAIVE, AWARE, NCCL
-void Qcu_Allreduce_naive();
-void Qcu_Allreduce_gpu_aware();
-void Qcu_Allreduce_nccl();
-// QCU ISEND    --- NAIVE, AWARE, NCCL
-void Qcu_Isend_naive();
-void Qcu_Isend_gpu_aware();
-void Qcu_Isend_nccl();
-// QCU IRECV   --- NAIVE, AWARE, NCCL
-void Qcu_Irecv_naive();
-void Qcu_Irecv_gpu_aware();
-void Qcu_Irecv_nccl();
-
-
 struct MsgHandler {
-  // MPI_Request
-  // MPI_Status
+  CommOption opt;
+
+  MPI_Request mpiSendRequest[Nd][DIRECTIONS]; // MPI_Request
+  MPI_Request mpiRecvRequest[Nd][DIRECTIONS]; // MPI_Request
+
+  MPI_Status mpiSendStatus[Nd][DIRECTIONS]; // MPI_Status
+  MPI_Status mpiRecvStatus[Nd][DIRECTIONS];
+
   // NCCL member
+  ncclComm_t ncclComm;
+  ncclUniqueId ncclId;
+
+  // TODO: change to option Init? (consider if necessary)
+  MsgHandler(CommOption opt = USE_GPU_AWARE_MPI) : opt(opt) { initNccl(); }
+  ~MsgHandler() { destroyNccl(); }
+
+private:
+  void initNccl();
+  void destroyNccl();
 };
 
 class QcuComm {
@@ -69,6 +63,13 @@ private:
 public:
   // force to use the constructor
   QcuComm(int Nx, int Ny, int Nz, int Nt);
+  int getNeighborRank(int dim, int dir) {
+    if (dim < 0 || dim >= Nd || dir < 0 || dir >= DIRECTIONS) {
+      printf("Invalid dim or dir\n");
+      return -1;
+    }
+    return neighbor_rank[dim][dir];
+  }
   ~QcuComm() {}
 };
 
