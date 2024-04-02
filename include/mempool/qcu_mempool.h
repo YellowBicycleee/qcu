@@ -90,7 +90,7 @@ public:
       CHECK_CUDA(cudaMalloc(&d_send_buffer[dim][dir], typeSize * length));
       CHECK_CUDA(cudaMalloc(&d_recv_buffer[dim][dir], typeSize * length));
 #ifdef DEBUG
-      printf("size = %u send / recv buffer allocated\ndim = %d, sendbuffer = %p, recvbuffer = %p\n",
+      printf("size = %lu send / recv buffer allocated\ndim = %d, sendbuffer = %p, recvbuffer = %p\n",
              typeSize * length, dim, d_send_buffer[dim][dir], d_recv_buffer[dim][dir]);
 #endif
     }

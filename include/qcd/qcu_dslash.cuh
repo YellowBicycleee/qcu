@@ -89,7 +89,7 @@ public:
 };
 
 
-struct DslashMV : QcuGEMV {
+struct DslashMV : QcuSPMV {
   // const DslashType dslashType_;
  
 

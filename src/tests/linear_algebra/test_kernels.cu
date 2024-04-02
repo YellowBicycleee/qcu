@@ -22,7 +22,7 @@ template <typename T> void init(T *data, int size) {
 template <> void init<Complex>(Complex *data, int size) {
   for (size_t i = 0; i < size; i++) {
     // data[i] = Complex(i, 2 * i + 1);
-    data[i] = Complex(1, 0);
+    data[i] = Complex(i, 2 * i + 1);
   }
   printf("complex initial function %s over\n", __FUNCTION__);
 }
@@ -32,7 +32,7 @@ template <typename T> double norm2(T *data, int size) {
   return 0;
 }
 template <> double norm2<Complex>(Complex *data, int size) {
-//   printf("### COMPLEX norm2\n");
+  //   printf("### COMPLEX norm2\n");
   double sum = 0;
   for (int i = 0; i < size; i++) {
     sum += data[i].norm2Square();
@@ -45,6 +45,17 @@ template <> double norm2<double>(double *data, int size) {
     sum += data[i] * data[i];
   }
   return sqrt(sum);
+}
+
+Complex cpuInnerProd(void *a_src, void *b_src, int size) {
+  Complex *a = (Complex *)a_src;
+  Complex *b = (Complex *)b_src;
+  Complex sum(0, 0);
+  for (int i = 0; i < size; i++) {
+    sum += a[i] * b[i].conj();
+  }
+  printf("function %s, result = %lf, %lf\n", __FUNCTION__, sum.real(), sum.imag());
+  return sum;
 }
 
 void checkNorm2(void *h_data, void *d_data, void *d_resbuf, int latticeSize) {
@@ -65,6 +76,29 @@ void checkNorm2(void *h_data, void *d_data, void *d_resbuf, int latticeSize) {
   cudaFree(d_res_ptr);
 }
 
+void checkInnerProd(void *h_data, void *d_data, void *d_resbuf, int latticeSize) {
+
+  qcu::MsgHandler msgHandler;
+  qcu::QcuInnerProd innerProd(&msgHandler);
+
+  Complex h_res;
+  Complex d_res;
+  Complex *d_res_ptr;
+
+  cudaMalloc(&d_res_ptr, sizeof(Complex));
+  
+  h_res = cpuInnerProd(h_data, h_data, latticeSize * 12);
+  printf("d_res_ptr = %p, d_resbuf = %p, d_data = %p\n", d_res_ptr, d_resbuf, d_data);
+  innerProd(d_res_ptr, d_resbuf, d_data, d_data, latticeSize * 12);
+  cudaDeviceSynchronize();
+  cudaMemcpy(&d_res, d_res_ptr, sizeof(Complex), cudaMemcpyDeviceToHost);
+
+  printf("h_res = %lf, %lf, d_res = %lf, %lf, ground truth = %lf\n", h_res.real(), h_res.imag(),
+         d_res.real(), d_res.imag(), (h_res - d_res).norm2Square() / h_res.norm2Square());
+
+  cudaFree(d_res_ptr);
+}
+
 // template <typename T> void checkKernel() {
 int main() {
   int myRank;
@@ -73,7 +107,7 @@ int main() {
 
   using T = Complex;
   int size = 8 * 8 * 16 * 16;
-//   int size = 1 * 1 * 1 * 2;
+  //   int size = 1 * 1 * 1 * 2;
   T *h_src;  // host src
   T *d_src;  // device src
   T *d_temp; // device result
@@ -86,6 +120,7 @@ int main() {
   cudaMemcpy(d_src, h_src, size * 12 * sizeof(T), cudaMemcpyHostToDevice);
 
   checkNorm2(h_src, d_src, d_temp, size);
+  checkInnerProd(h_src, d_src, d_temp, size);
   delete[] h_src;
   cudaFree(d_src);
   cudaFree(d_temp);
