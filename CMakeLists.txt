@@ -30,8 +30,11 @@ target_include_directories(qcu
 add_executable(test_linear_algebra 
     ${PROJECT_SOURCE_DIR}/src/tests/linear_algebra/test_kernels.cu)
 target_link_libraries(test_linear_algebra qcu)
+set_target_properties(test_linear_algebra PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "tests")
 
 find_package(MPI REQUIRED)
 target_link_libraries(qcu ${MPI_LIBRARIES})
 target_link_libraries(qcu nccl)
+
 target_compile_definitions(qcu PRIVATE MPI_ENABLED)
