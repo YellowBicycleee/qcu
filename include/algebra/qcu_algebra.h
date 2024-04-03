@@ -1,5 +1,6 @@
 #pragma once
 
+#include "basic_data/qcu_complex.cuh"
 #include "comm/qcu_communicator.h"
 #include "qcu_macro.cuh"
 #define QCU_CUDA_ENABLED
@@ -17,7 +18,7 @@ struct QcuVectorAdd {
   QcuVectorAdd(int pBlockSize = 256) : blockSize(pBlockSize) {}
   // template <typename _T>
   virtual void operator()(_genvector result, _genvector operand1, _genvector operand2,
-                                int vectorLength, cudaStream_t stream = NULL);
+                          int vectorLength, cudaStream_t stream = NULL);
 };
 
 // FUNCTOR: QcuSPMV
@@ -51,7 +52,7 @@ struct QcuInnerProd {
   QcuInnerProd(MsgHandler *pMsgHandler = nullptr, int pBlockSize = 256)
       : msgHandler(pMsgHandler), blockSize(pBlockSize) {}
   virtual void operator()(_genvector result, _genvector temp_result, _genvector operand1,
-                                _genvector operand2, int vectorLength, cudaStream_t stream = NULL);
+                          _genvector operand2, int vectorLength, cudaStream_t stream = NULL);
 };
 
 /// FUNCTOR: QcuNorm2
@@ -65,9 +66,38 @@ struct QcuNorm2 {
   QcuNorm2(MsgHandler *pMsgHandler, int pBlockSize = 256)
       : msgHandler(pMsgHandler), blockSize(pBlockSize) {}
   virtual void operator()(_genvector result, _genvector temp_result, _genvector operand,
-                                int vectorLength, cudaStream_t stream = NULL);
+                          int vectorLength, cudaStream_t stream = NULL);
 };
 
+// result = alpha * operand1 + operand2
+struct QcuSaxpy {
+  typedef void *_genvector;
+  int blockSize;
+
+  QcuSaxpy(int pBlockSize = 256) : blockSize(pBlockSize) {}
+  virtual void operator()(_genvector result, Complex alpha, _genvector operandX,
+                          _genvector operandY, int vectorLength, cudaStream_t stream = NULL);
+};
+
+// result = alpha * operand
+struct QcuSax {
+  typedef void *_genvector;
+  int blockSize;
+
+  QcuSax(int pBlockSize = 256) : blockSize(pBlockSize) {}
+  virtual void operator()(_genvector result, Complex alpha, _genvector operandX, int vectorLength,
+                          cudaStream_t stream = NULL);
+};
+
+// result = operand
+struct QcuComplexCopy {
+  typedef void *_genvector;
+  int blockSize;
+
+  QcuComplexCopy(int pBlockSize = 256) : blockSize(pBlockSize) {}
+  virtual void operator()(_genvector result, _genvector operand, int vectorLength,
+                          cudaStream_t stream = NULL);
+};
 void complexDivideGPU(void *res, void *a, void *b, cudaStream_t stream = NULL);
 #endif
 

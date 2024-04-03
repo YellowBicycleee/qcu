@@ -1,4 +1,5 @@
 #pragma once
+
 #include "basic_data/qcu_complex.cuh"
 __global__ void complexDivideKernel(void *result, void *a, void *b) {
   Complex x = *static_cast<Complex *>(a);
@@ -6,11 +7,13 @@ __global__ void complexDivideKernel(void *result, void *a, void *b) {
   Complex ret = x / y;
   *static_cast<Complex *>(result) = ret;
 }
+
 __global__ void doubleSqrt(void *result, void *operand) {
   double x = *static_cast<double *>(operand);
   double ret = sqrt(x);
   *static_cast<double *>(result) = ret;
 }
+
 __global__ void double2VectorAdd(void *result, void *operand1, void *operand2, int vectorLength) {
   int globalId = blockIdx.x * blockDim.x + threadIdx.x;
   int totalSize = blockDim.x * gridDim.x;
@@ -90,7 +93,6 @@ __global__ void doubleReduceSum(void *result, void *src, int vectorLength) {
   }
 }
 
-// template <typename T>
 __global__ void innerProduct(void *result, void *operand1, void *operand2, int vectorLength) {
   int globalId = blockIdx.x * blockDim.x + threadIdx.x;
   int localId = threadIdx.x;
@@ -158,5 +160,52 @@ __global__ void norm2Square(void *result, void *operand, int vectorLength) {
   // result is stored in doubleSharedMemory[0]
   if (localId == 0) {
     static_cast<double *>(result)[blockIdx.x] = doubleSharedMemory[0];
+  }
+}
+
+// ---------------------------------------
+// simple linear algebra
+/// Saxpy
+__global__ void saxpy_kernel(void *result, Complex scalar, void *operandX, void *operandY,
+                             int vectorLength) {
+  double2 *resultPtr;
+  double2 *operandXPtr;
+  double2 *operandYPtr;
+  int globalId = blockIdx.x * blockDim.x + threadIdx.x;
+  int totalSize = blockDim.x * gridDim.x;
+  Complex temp;
+
+  for (int i = globalId; i < vectorLength; i += totalSize) {
+    resultPtr = static_cast<double2 *>(result) + i;
+    operandXPtr = static_cast<double2 *>(operandX) + i;
+    operandYPtr = static_cast<double2 *>(operandY) + i;
+    temp = scalar * Complex(*operandXPtr) + Complex(*operandYPtr);
+    *resultPtr = make_double2(temp.real(), temp.imag());
+  }
+}
+
+/// Sax
+__global__ void sax_kernel(void *result, Complex scalar, void *operandX, int vectorLength) {
+  double2 *resultPtr;
+  double2 *operandXPtr;
+  int globalId = blockIdx.x * blockDim.x + threadIdx.x;
+  int totalSize = blockDim.x * gridDim.x;
+  Complex temp;
+
+  for (int i = globalId; i < vectorLength; i += totalSize) {
+    resultPtr = static_cast<double2 *>(result) + i;
+    operandXPtr = static_cast<double2 *>(operandX) + i;
+    temp = scalar * (*operandXPtr);
+    *resultPtr = make_double2(temp.real(), temp.imag());
+  }
+}
+
+// copy
+__global__ void copyComplex(void *result, void *src, int vectorLength) {
+  int globalId = blockIdx.x * blockDim.x + threadIdx.x;
+  int totalSize = blockDim.x * gridDim.x;
+
+  for (int i = globalId; i < vectorLength; i += totalSize) {
+    static_cast<double2 *>(result)[i] = static_cast<double2 *>(src)[i];
   }
 }

@@ -4,6 +4,7 @@
 
 BEGIN_NAMESPACE(qcu)
 typedef void *_genvector;
+#ifdef QCU_CUDA_ENABLED
 
 void QcuInnerProd::operator()(_genvector result, _genvector temp_result, _genvector operand1,
                               _genvector operand2, int vectorLength, cudaStream_t stream) {
@@ -39,8 +40,34 @@ void QcuNorm2::operator()(_genvector result, _genvector temp_result, _genvector 
   doubleSqrt<<<1, 1, 0, stream>>>(result, result); // sqrt
 }
 
+// result = alpha * operand1 + operand2
+void QcuSaxpy::operator()(_genvector result, Complex alpha, _genvector operandX,
+                                  _genvector operandY, int vectorLength, cudaStream_t stream) {
+  // void saxpy_kernel(void *result, Complex scalar, void *operandX, void *operandY,
+  //  int vectorLength)
+  int gridSize = (vectorLength + blockSize - 1) / blockSize;
+  saxpy_kernel<<<gridSize, blockSize, 0, stream>>>(result, alpha, operandX, operandY, vectorLength);
+}
+
+// result = alpha * operand
+void QcuSax::operator()(_genvector result, Complex alpha, _genvector operandX,
+                                int vectorLength, cudaStream_t stream) {
+  //  void sax_kernel(void *result, Complex scalar, void *operandX, int vectorLength)
+  int gridSize = (vectorLength + blockSize - 1) / blockSize;
+  sax_kernel<<<gridSize, blockSize, 0, stream>>>(result, alpha, operandX, vectorLength);
+}
+
+// result = operand
+void QcuComplexCopy::operator()(_genvector result, _genvector operand, int vectorLength,
+                                cudaStream_t stream) {
+  int gridSize = (vectorLength + blockSize - 1) / blockSize;
+  copyComplex<<<gridSize, blockSize, 0, stream>>>(result, operand, vectorLength);
+}
+
+
+
 void complexDivideGPU(void *res, void *a, void *b, cudaStream_t stream) {
   complexDivideKernel<<<1, 1, 0, stream>>>(res, a, b);
 }
-
+#endif
 END_NAMESPACE(qcu)
