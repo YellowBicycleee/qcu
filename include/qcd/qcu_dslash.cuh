@@ -1,11 +1,11 @@
 #pragma once
 
+#include "algebra/qcu_algebra.h"
 #include "comm/qcu_communicator.h"
 #include "mempool/qcu_mempool.h"
 #include "qcu.h"
 #include "qcu_macro.cuh"
 #include <cuda.h>
-#include "algebra/qcu_algebra.h"
 BEGIN_NAMESPACE(qcu)
 
 enum DslashType {
@@ -13,7 +13,10 @@ enum DslashType {
   CLOVER_DSLASH_4D,
 
 };
-struct DslashParam {
+
+struct QcuParam {};
+
+struct DslashParam : public QcuParam {
   int Lx;
   int Ly;
   int Lz;
@@ -26,43 +29,42 @@ struct DslashParam {
   int Nt;
   int daggerFlag;
 
+  double kappa;
   void *fermionIn;
   void *fermionOut;
   void *gauge;
+  void *tempFermionIn1; // use this ptr to store the temp fermion field, when calc dagger and
+                        // non-dagger dslash, single dslash assign this variable to nullptr,
+                        // when using cg solver, cg solver will assign this variable to a temp space
+  void *tempFermionIn2;
 
   QcuMemPool *memPool;
   MsgHandler *msgHandler;
   QcuComm *qcuComm;
+
+  cudaStream_t stream1;
+  cudaStream_t stream2;
+
   // constructor
   DslashParam(void *pFermionIn, void *pFermionOut, void *pGauge, int pLx, int pLy, int pLz, int pLt,
-              int pParity, int pNx, int pNy, int pNz, int pNt, int pDaggerFlag = 0,
-              QcuMemPool *pMemPool = nullptr, MsgHandler *pMsgHandler = nullptr, QcuComm *pQcuComm = nullptr)
+              int pParity, int pNx, int pNy, int pNz, int pNt, int pKappa, int pDaggerFlag = 0,
+              QcuMemPool *pMemPool = nullptr, MsgHandler *pMsgHandler = nullptr,
+              QcuComm *pQcuComm = nullptr, cudaStream_t pStream1 = NULL,
+              cudaStream_t pStream2 = NULL)
       : fermionIn(pFermionIn), fermionOut(pFermionOut), gauge(pGauge), Lx(pLx), Ly(pLy), Lz(pLz),
-        Lt(pLt), parity(pParity), Nx(pNx), Ny(pNy), Nz(pNz), Nt(pNt),
-        daggerFlag(pDaggerFlag), memPool(pMemPool), msgHandler(pMsgHandler), qcuComm(pQcuComm) {}
+        Lt(pLt), parity(pParity), Nx(pNx), Ny(pNy), Nz(pNz), Nt(pNt), kappa(pKappa),
+        daggerFlag(pDaggerFlag), memPool(pMemPool), msgHandler(pMsgHandler), qcuComm(pQcuComm),
+        tempFermionIn1(nullptr), tempFermionIn2(nullptr), stream1(pStream1), stream2(pStream2) {}
 
   // copy constructor
   DslashParam(const DslashParam &rhs)
       : fermionIn(rhs.fermionIn), fermionOut(rhs.fermionOut), gauge(rhs.gauge), Lx(rhs.Lx),
         Ly(rhs.Ly), Lz(rhs.Lz), Lt(rhs.Lt), parity(rhs.parity), Nx(rhs.Nx), Ny(rhs.Ny), Nz(rhs.Nz),
-        Nt(rhs.Nt), daggerFlag(rhs.daggerFlag), memPool(rhs.memPool), msgHandler(rhs.msgHandler),
-        qcuComm(rhs.qcuComm) {}
+        Nt(rhs.Nt), kappa(rhs.kappa), daggerFlag(rhs.daggerFlag), memPool(rhs.memPool),
+        msgHandler(rhs.msgHandler), qcuComm(rhs.qcuComm), tempFermionIn1(rhs.tempFermionIn1),
+        tempFermionIn2(rhs.tempFermionIn2), stream1(rhs.stream1), stream2(rhs.stream2) {}
 
-  // copy assignment
-  DslashParam &operator=(const DslashParam &rhs) {
-    fermionIn = rhs.fermionIn;
-    fermionOut = rhs.fermionOut;
-    gauge = rhs.gauge;
-    Lx = rhs.Lx;
-    Ly = rhs.Ly;
-    Lz = rhs.Lz;
-    Lt = rhs.Lt;
-    parity = rhs.parity;
-    return *this;
-  }
-  void changeParity() {
-    parity = 1 - parity;
-  }
+  void changeParity() { parity = 1 - parity; }
 };
 
 // host class, to call kernel functions
@@ -70,19 +72,10 @@ class Dslash {
 protected:
   int blockSize_;
 
-  DslashParam *dslashParam_;
-  cudaStream_t cudaStream1_; // stream for dslash kernel, default stream is NULL
-  cudaStream_t cudaStream2_; // stream for dslash kernel, default stream is NULL
 public:
-  Dslash(DslashParam *param, int blockSize = 256, cudaStream_t dslashStream1 = NULL,
-         cudaStream_t dslashStream2 = NULL)
-      : dslashParam_(param), blockSize_(blockSize), cudaStream1_(dslashStream1),
-        cudaStream2_(dslashStream2) {}
-
-  // use this function to call kernel function, this function donnot sync inside
-  // virtual void apply(int daggerFlag) = 0;
-  // virtual void preApply(int daggerFlag) = 0;
-  // virtual void postApply(int daggerFlag) = 0;
+  DslashParam *dslashParam_;
+  Dslash(DslashParam *param, int blockSize = 256) : dslashParam_(param), blockSize_(blockSize) {}
+  virtual ~Dslash() {}
   virtual void apply() = 0;
   virtual void preApply() = 0;
   virtual void postApply() = 0;
@@ -90,17 +83,18 @@ public:
 
 
 struct DslashMV : QcuSPMV {
-  // const DslashType dslashType_;
- 
 
-  // DslashMV(const Dslash *dslash) : dslash(pDslash) {}
-  virtual void operator()(_genvector fermionOut, _genvector gauge, _genvector fermionIn,
-                          int parity = 0, cudaStream_t stream = NULL) {
-    // int daggerFlag = dslash->dslashParam_->daggerFlag;
-    // dslash->preApply();
-    // dslash->apply();
-    // dslash->postApply();
+  Dslash *dslash;
+  DslashMV(Dslash *pDslash = nullptr, int blockSize = 256) : dslash(pDslash), QcuSPMV(blockSize) {}
+  DslashMV(const DslashMV &rhs) : dslash(rhs.dslash), QcuSPMV(rhs.blockSize) {}
+  void operator=(const DslashMV &rhs) {
+    dslash = rhs.dslash;
+    blockSize = rhs.blockSize;
   }
+  // 去掉了even_odd参数，
+  // 此函数只负责传入result和src指针，其他参数，由dslashParam_传入
+  // 待删除参数：stream
+  virtual void operator()(_genvector result, _genvector src, cudaStream_t stream = NULL);
 };
 
 END_NAMESPACE(qcu)

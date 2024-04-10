@@ -5,10 +5,10 @@
 // #define DEBUG
 BEGIN_NAMESPACE(qcu)
 
-#ifdef DEBUG
-MPI_Status status[Nd][DIRECTIONS];
-MPI_Request request[Nd][DIRECTIONS];
-#endif
+// #ifdef DEBUG
+// MPI_Status status[Nd][DIRECTIONS];
+// MPI_Request request[Nd][DIRECTIONS];
+// #endif
 
 // use this function to call kernel function, this function donnot sync inside
 // void WilsonDslash::apply(int daggerFlag) {
@@ -27,26 +27,24 @@ void WilsonDslash::apply() {
   int Nz = dslashParam_->Nz;
   int Nt = dslashParam_->Nt;
 
+  cudaStream_t stream1 = dslashParam_->stream1;
   double daggerParam = daggerFlag ? -1.0 : 1.0;
   int vol = Lx * Ly * Lz * Lt;
 
   int gridSize = (vol / 2 + blockSize_ - 1) / blockSize_;
 
-  dslashKernelFunc<<<gridSize, blockSize_, 0, cudaStream1_>>>(
-      gauge, fermionIn, fermionOut, Lx, Ly, Lz, Lt, parity, Nx, Ny, Nz, Nt, daggerParam);
-  printf("Apply Done\n");
+  dslashKernelFunc<<<gridSize, blockSize_, 0, stream1>>>(gauge, fermionIn, fermionOut, Lx, Ly, Lz,
+                                                         Lt, parity, Nx, Ny, Nz, Nt, daggerParam);
+  // printf("Apply Done\n");
 }
 
 // only call kernel funcs
 void WilsonDslash::preDslash(int dim, int dir, int daggerFlag) {
-#ifdef DEBUG
-  printf("PreDslash BEGIN: dim = %d, dir = %d, daggerFlag = %d\n", dim, dir, daggerFlag);
-#endif
+
   if ((dim < X_DIM || dim > T_DIM) || (dir < 0 || dir > 1)) {
     return;
   }
-  // dir == 0 ---> stream1
-  // dir == 1 ---> stream2
+  cudaStream_t stream2 = dslashParam_->stream2;
   void *gauge = dslashParam_->gauge;
   void *fermionIn = dslashParam_->fermionIn;
   void *fermionOut = dslashParam_->memPool->d_send_buffer[dim][dir];
@@ -72,39 +70,39 @@ void WilsonDslash::preDslash(int dim, int dir, int daggerFlag) {
   int gridSize = (vol + blockSize_ - 1) / blockSize_;
   if (dim == X_DIM) {
     if (dir == BWD) {
-      DslashTransferBackX<<<gridSize, blockSize_, 0, cudaStream2_>>>(
-          fermionIn, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionOut));
+      DslashTransferBackX<<<gridSize, blockSize_, 0, stream2>>>(fermionIn, Lx, Ly, Lz, Lt, parity,
+                                                                static_cast<Complex *>(fermionOut));
     } else {
-      DslashTransferFrontX<<<gridSize, blockSize_, 0, cudaStream2_>>>(
+      DslashTransferFrontX<<<gridSize, blockSize_, 0, stream2>>>(
           gauge, fermionIn, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionOut),
           daggerParam);
     }
   } else if (dim == Y_DIM) {
     if (dir == BWD) {
-      DslashTransferBackY<<<gridSize, blockSize_, 0, cudaStream2_>>>(
-          fermionIn, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionOut));
+      DslashTransferBackY<<<gridSize, blockSize_, 0, stream2>>>(fermionIn, Lx, Ly, Lz, Lt, parity,
+                                                                static_cast<Complex *>(fermionOut));
     } else {
-      DslashTransferFrontY<<<gridSize, blockSize_, 0, cudaStream2_>>>(
+      DslashTransferFrontY<<<gridSize, blockSize_, 0, stream2>>>(
           gauge, fermionIn, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionOut),
           daggerParam);
     }
 
   } else if (dim == Z_DIM) {
     if (dir == BWD) {
-      DslashTransferBackZ<<<gridSize, blockSize_, 0, cudaStream2_>>>(
-          fermionIn, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionOut));
+      DslashTransferBackZ<<<gridSize, blockSize_, 0, stream2>>>(fermionIn, Lx, Ly, Lz, Lt, parity,
+                                                                static_cast<Complex *>(fermionOut));
     } else {
-      DslashTransferFrontZ<<<gridSize, blockSize_, 0, cudaStream2_>>>(
+      DslashTransferFrontZ<<<gridSize, blockSize_, 0, stream2>>>(
           gauge, fermionIn, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionOut),
           daggerParam);
     }
 
   } else if (dim == T_DIM) {
     if (dir == BWD) {
-      DslashTransferBackT<<<gridSize, blockSize_, 0, cudaStream2_>>>(
-          fermionIn, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionOut));
+      DslashTransferBackT<<<gridSize, blockSize_, 0, stream2>>>(fermionIn, Lx, Ly, Lz, Lt, parity,
+                                                                static_cast<Complex *>(fermionOut));
     } else {
-      DslashTransferFrontT<<<gridSize, blockSize_, 0, cudaStream2_>>>(
+      DslashTransferFrontT<<<gridSize, blockSize_, 0, stream2>>>(
           gauge, fermionIn, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionOut),
           daggerParam);
     }
@@ -118,8 +116,7 @@ void WilsonDslash::postDslash(int dim, int dir, int daggerFlag) {
   if ((dim < X_DIM || dim > T_DIM) || (dir < 0 || dir > 1)) {
     return;
   }
-  // dir == 0 ---> stream1
-  // dir == 1 ---> stream2
+  cudaStream_t stream2 = dslashParam_->stream2;
   void *gauge = dslashParam_->gauge;
   // void *fermionIn = dslashParam_->fermionIn;
   void *fermionIn = dslashParam_->memPool->d_recv_buffer[dim][dir];
@@ -146,51 +143,52 @@ void WilsonDslash::postDslash(int dim, int dir, int daggerFlag) {
   int gridSize = (vol + blockSize_ - 1) / blockSize_;
   if (dim == X_DIM) {
     if (dir == BWD) {
-      calculateBackBoundaryX<<<gridSize, blockSize_, 0, cudaStream1_>>>(
+      calculateBackBoundaryX<<<gridSize, blockSize_, 0, stream2>>>(
           fermionOut, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionIn));
     } else {
-      calculateFrontBoundaryX<<<gridSize, blockSize_, 0, cudaStream1_>>>(
+      calculateFrontBoundaryX<<<gridSize, blockSize_, 0, stream2>>>(
           gauge, fermionOut, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionIn),
           daggerParam);
     }
   } else if (dim == Y_DIM) {
     if (dir == BWD) {
-      calculateBackBoundaryY<<<gridSize, blockSize_, 0, cudaStream1_>>>(
+      calculateBackBoundaryY<<<gridSize, blockSize_, 0, stream2>>>(
           fermionOut, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionIn));
     } else {
-      calculateFrontBoundaryY<<<gridSize, blockSize_, 0, cudaStream1_>>>(
+      calculateFrontBoundaryY<<<gridSize, blockSize_, 0, stream2>>>(
           gauge, fermionOut, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionIn),
           daggerParam);
     }
   } else if (dim == Z_DIM) {
     if (dir == BWD) {
-      calculateBackBoundaryZ<<<gridSize, blockSize_, 0, cudaStream1_>>>(
+      calculateBackBoundaryZ<<<gridSize, blockSize_, 0, stream2>>>(
           fermionOut, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionIn));
     } else {
-      calculateFrontBoundaryZ<<<gridSize, blockSize_, 0, cudaStream1_>>>(
+      calculateFrontBoundaryZ<<<gridSize, blockSize_, 0, stream2>>>(
           gauge, fermionOut, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionIn),
           daggerParam);
     }
   } else if (dim == T_DIM) {
     if (dir == BWD) {
-      calculateBackBoundaryT<<<gridSize, blockSize_, 0, cudaStream1_>>>(
+      calculateBackBoundaryT<<<gridSize, blockSize_, 0, stream2>>>(
           fermionOut, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionIn));
     } else {
-      calculateFrontBoundaryT<<<gridSize, blockSize_, 0, cudaStream1_>>>(
+      calculateFrontBoundaryT<<<gridSize, blockSize_, 0, stream2>>>(
           gauge, fermionOut, Lx, Ly, Lz, Lt, parity, static_cast<Complex *>(fermionIn),
           daggerParam);
     }
   } else {
-    return;
+    assert(0);
   }
 }
 
 void WilsonDslash::dslashMpiIsendrecv(int dim) {
   int vectorLength;
 
-  void *sendbuf; //  = dslashParam_->memPool->d_send_buffer[dim][dir];
-  void *recvbuf; // = dslashParam_->memPool->d_recv_buffer[dim][dir];
-  int dest, src; //  = dslashParam_->qcuComm->getNeighborRank(dim, dir);
+  void *sendbuf;
+  void *recvbuf;
+  int dest, src;
+  cudaStream_t stream2 = dslashParam_->stream2;
 
   switch (dim) {
   case X_DIM:
@@ -218,8 +216,8 @@ void WilsonDslash::dslashMpiIsendrecv(int dim) {
   src = dslashParam_->qcuComm->getNeighborRank(dim, BWD);
 
   // CHECK_NCCL(ncclGroupStart());
-  CHECK_NCCL(ncclSend(sendbuf, vectorLength * 2, ncclDouble, dest, comm, cudaStream2_));
-  CHECK_NCCL(ncclRecv(recvbuf, vectorLength * 2, ncclDouble, src, comm, cudaStream2_));
+  CHECK_NCCL(ncclSend(sendbuf, vectorLength * 2, ncclDouble, dest, comm, stream2));
+  CHECK_NCCL(ncclRecv(recvbuf, vectorLength * 2, ncclDouble, src, comm, stream2));
   // CHECK_NCCL(ncclGroupEnd());
 
   // CHECK_CUDA(cudaStreamSynchronize(cudaStream2_));
@@ -229,17 +227,19 @@ void WilsonDslash::dslashMpiIsendrecv(int dim) {
   dest = dslashParam_->qcuComm->getNeighborRank(dim, BWD);
   src = dslashParam_->qcuComm->getNeighborRank(dim, FWD);
   // CHECK_NCCL(ncclGroupStart());
-  CHECK_NCCL(ncclSend(sendbuf, vectorLength * 2, ncclDouble, dest, comm, cudaStream2_));
-  CHECK_NCCL(ncclRecv(recvbuf, vectorLength * 2, ncclDouble, src, comm, cudaStream2_));
+  CHECK_NCCL(ncclSend(sendbuf, vectorLength * 2, ncclDouble, dest, comm, stream2));
+  CHECK_NCCL(ncclRecv(recvbuf, vectorLength * 2, ncclDouble, src, comm, stream2));
   // CHECK_NCCL(ncclGroupEnd());
 }
 
-void WilsonDslash::dslashMpiWait() { CHECK_CUDA(cudaStreamSynchronize(cudaStream2_)); }
+void WilsonDslash::dslashMpiWait() {
+  cudaStream_t stream1 = dslashParam_->stream1;
+  CHECK_CUDA(cudaStreamSynchronize(stream1));
+}
 
-// void WilsonDslash::preApply(int daggerFlag) {
 void WilsonDslash::preApply() {
   int daggerFlag = dslashParam_->daggerFlag;
-  // boundary calc and transfer on stream2 
+  // boundary calc and transfer on stream2
   if (dslashParam_->Nx > 1) {
     preDslash(X_DIM, FWD, daggerFlag);
     preDslash(X_DIM, BWD, daggerFlag);
@@ -277,11 +277,11 @@ void WilsonDslash::preApply() {
     dslashMpiIsendrecv(T_DIM);
   }
   CHECK_NCCL(ncclGroupEnd());
-#ifdef DEBUG
-  printf("PreApply Done\n");
-#endif
+// #ifdef DEBUG
+//   printf("PreApply Done\n");
+// #endif
 }
-// void WilsonDslash::postApply(int daggerFlag) {
+
 void WilsonDslash::postApply() {
   int daggerFlag = dslashParam_->daggerFlag;
   // MPI_Wait
@@ -290,9 +290,9 @@ void WilsonDslash::postApply() {
     dslashMpiWait();
   }
 
-#ifdef DEBUG
-  printf("then, Begin postDslash\n");
-#endif
+// #ifdef DEBUG
+//   printf("then, Begin postDslash\n");
+// #endif
   // calculate
   if (dslashParam_->Nx > 1) {
     postDslash(X_DIM, FWD, daggerFlag);
@@ -310,6 +310,6 @@ void WilsonDslash::postApply() {
     postDslash(T_DIM, FWD, daggerFlag);
     postDslash(T_DIM, BWD, daggerFlag);
   }
-  printf("PostApply Done\n");
+  // printf("PostApply Done\n");
 }
 END_NAMESPACE(qcu)

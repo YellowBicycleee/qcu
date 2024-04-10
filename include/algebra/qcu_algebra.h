@@ -27,19 +27,39 @@ struct QcuVectorAdd {
 struct QcuSPMV {
   typedef void *_genvector;
   int blockSize;
-  MsgHandler *msgHandler;
-  _genvector matrix;
-  _genvector vector;
+  QcuSPMV(int pBlockSize = 256) : blockSize(pBlockSize) {}
+  // MsgHandler *msgHandler; // useless temporarily, reserved for future use
+  // _genvector matrix;
+  // _genvector vector;
 
-  QcuSPMV(MsgHandler *pMsgHandler, int pBlockSize = 256)
-      : msgHandler(pMsgHandler), blockSize(pBlockSize) {}
+  // QcuSPMV(MsgHandler *pMsgHandler, int pBlockSize = 256)
+  //     : msgHandler(pMsgHandler), blockSize(pBlockSize) {}
 
   // general SPMV（稀疏矩阵向量乘）暂时不实现
-  virtual void operator()(_genvector result, _genvector operand1, _genvector operand2,
-                          int parity = 0, cudaStream_t stream = NULL) {
+  virtual void operator()(_genvector result, _genvector src, cudaStream_t stream = NULL) {
     printf("SPMV not implemented\n");
   };
+  // virtual void operator()(QCU_DAGGER_FLAG daggerFlag, _genvector result, _genvector src,
+  //                         int parity = 0, cudaStream_t stream = NULL) {
+  //   printf("SPMV not implemented\n");
+  // };
 };
+// struct QcuSPMV {
+//   typedef void *_genvector;
+//   int blockSize;
+//   MsgHandler *msgHandler; // useless temporarily, reserved for future use
+//   _genvector matrix;
+//   // _genvector vector;
+
+//   QcuSPMV(MsgHandler *pMsgHandler, int pBlockSize = 256)
+//       : msgHandler(pMsgHandler), blockSize(pBlockSize) {}
+
+//   // general SPMV（稀疏矩阵向量乘）暂时不实现
+//   virtual void operator()(QCU_DAGGER_FLAG daggerFlag, _genvector result, _genvector src,
+//                           int parity = 0, cudaStream_t stream = NULL) {
+//     printf("SPMV not implemented\n");
+//   };
+// };
 
 /// FUNCTOR: QcuInnerProd
 /// 用于计算向量operand1和operand2的内积，最终结果放在result，中间结果放在temp_result
@@ -51,6 +71,12 @@ struct QcuInnerProd {
   // template <typename _T>
   QcuInnerProd(MsgHandler *pMsgHandler = nullptr, int pBlockSize = 256)
       : msgHandler(pMsgHandler), blockSize(pBlockSize) {}
+  QcuInnerProd(const QcuInnerProd &other)
+      : blockSize(other.blockSize), msgHandler(other.msgHandler) {}
+  void operator=(const QcuInnerProd &other) {
+    blockSize = other.blockSize;
+    msgHandler = other.msgHandler;
+  }
   virtual void operator()(_genvector result, _genvector temp_result, _genvector operand1,
                           _genvector operand2, int vectorLength, cudaStream_t stream = NULL);
 };
@@ -65,6 +91,11 @@ struct QcuNorm2 {
   // template <typename _T>
   QcuNorm2(MsgHandler *pMsgHandler, int pBlockSize = 256)
       : msgHandler(pMsgHandler), blockSize(pBlockSize) {}
+  QcuNorm2(const QcuNorm2 &other) : blockSize(other.blockSize), msgHandler(other.msgHandler) {}
+  void operator=(const QcuNorm2 &other) {
+    blockSize = other.blockSize;
+    msgHandler = other.msgHandler;
+  }
   virtual void operator()(_genvector result, _genvector temp_result, _genvector operand,
                           int vectorLength, cudaStream_t stream = NULL);
 };
