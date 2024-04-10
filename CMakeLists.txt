@@ -17,16 +17,20 @@ project(QCU LANGUAGES C CXX CUDA) # project name = ${PROJECT_NAME}
 add_library(qcu 
     SHARED
     src/comm/qcu_communicator.cu
+    src/qcd/qcu_dslash.cu
     src/qcd/qcu_wilson_dslash.cu
     src/qcu_storage/qcu_storage.cu
     src/qcu.cu
     src/algebra/qcu_algebra.cu
+    src/solver/qcu_cg.cu
 )
+
 target_include_directories(qcu 
     PUBLIC
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/interface
 )
+
 add_executable(test_linear_algebra 
     ${PROJECT_SOURCE_DIR}/src/tests/linear_algebra/test_kernels.cu)
 target_link_libraries(test_linear_algebra qcu)
