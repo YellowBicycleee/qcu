@@ -1,6 +1,7 @@
-#include <cassert>
-
 #include "solver/qcu_cg.h"
+#include <cassert>
+#include <cuda.h>
+#include <cuda_runtime.h>
 
 #define PRINT_RATIO
 
@@ -15,8 +16,10 @@ void CGDslashMV_Odd::operator()(_genvector result, _genvector src, cudaStream_t 
   int Lz = dslashParam->Lz;
   int Lt = dslashParam->Lt;
   double kappa = dslashParam->kappa;
+
   int vol = Lx * Ly * Lz * Lt;
   int vectorLength = vol * Ns * Nc / 2;
+
   void *tempFermionIn1 = dslashParam->tempFermionIn1;
   void *tempFermionIn2 = dslashParam->tempFermionIn2;
   cudaStream_t stream1 = dslashParam->stream1;
@@ -24,54 +27,55 @@ void CGDslashMV_Odd::operator()(_genvector result, _genvector src, cudaStream_t 
   Complex minusKappaSquare = Complex(-kappa * kappa, 0.0);
   QcuSaxpy saxpyFunc;
 
-  // if (dslashType_ == DSLASH_WILSON) {
-
   // no-dagger
   dslashParam->parity = EVEN_PARITY;
   dslashParam->daggerFlag = QCU_DAGGER_NO;
   dslashParam->fermionIn = src;
   dslashParam->fermionOut = tempFermionIn1;
-
   dslash->preApply();
   dslash->apply();
   dslash->postApply(); // tempFermionIn1 = D_{eo} x_{o}
+  // CHECK_CUDA(cudaStreamSynchronize(stream1));    // postApply()只需要同步stream2
+  CHECK_CUDA(cudaStreamSynchronize(stream2));
 
   dslashParam->parity = ODD_PARITY;
   dslashParam->daggerFlag = QCU_DAGGER_NO;
   dslashParam->fermionIn = tempFermionIn1;
   dslashParam->fermionOut = tempFermionIn2;
-
   dslash->preApply();
   dslash->apply();
   dslash->postApply(); // tempFermionIn2 = D_{oe} D_{eo} x_{o}
+  // CHECK_CUDA(cudaStreamSynchronize(stream1));
+  CHECK_CUDA(cudaStreamSynchronize(stream2));
 
   // 注意：tempFermion2的结果要保留到最后
   saxpyFunc(tempFermionIn2, minusKappaSquare, tempFermionIn2, src, vectorLength, stream1);
+  CHECK_CUDA(cudaStreamSynchronize(stream1));
 
   // dagger
   dslashParam->parity = EVEN_PARITY;
   dslashParam->daggerFlag = QCU_DAGGER_YES;
   dslashParam->fermionIn = tempFermionIn2;
   dslashParam->fermionOut = tempFermionIn1;
-
   dslash->preApply();
   dslash->apply();
   dslash->postApply(); // tempFermionIn1 = D^{\dagger}_{eo} tempFermionIn2
+  // CHECK_CUDA(cudaStreamSynchronize(stream1));
+  CHECK_CUDA(cudaStreamSynchronize(stream2));
 
   dslashParam->parity = ODD_PARITY;
   dslashParam->daggerFlag = QCU_DAGGER_YES;
   dslashParam->fermionIn = tempFermionIn1;
   dslashParam->fermionOut = result;
-
   dslash->preApply();
   dslash->apply();
   dslash->postApply(); // result = D^{\dagger}_{oe} D^{\dagger}_{eo} tempFermionIn2
+  // CHECK_CUDA(cudaStreamSynchronize(stream1));
+  CHECK_CUDA(cudaStreamSynchronize(stream2));
 
   // result = tempFermionIn2 - kappa^2 * result
   saxpyFunc(result, minusKappaSquare, result, tempFermionIn2, vectorLength, stream1);
-  // } else {
-  //   assert(0);
-  // }
+  CHECK_CUDA(cudaStreamSynchronize(stream1));
 }
 
 void QcuCG::allocateTempVectors() {
@@ -161,12 +165,15 @@ bool QcuCG::odd_cg(void *resX, void *newOddB) {
   CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream2));
   // now, tmp1_ tmp2_ tmp3_ tmp4_ are not used
 
+  // if converge then return x
+  if (ifConverge(rsdTarget_, rsdNorm, bNorm)) {
+    return true;
+  }
+
   while (numIterations_ < maxIterations_) {
     numIterations_++;
     // A * p
     cgIterMV_Odd_(tmp1_, pVec_); // tmp1_ = A * pVec_
-    CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
-    CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream2));
 
     // alpha = r^T * r / p^T * A * p
     // reg1 = r^T * r
@@ -193,9 +200,9 @@ bool QcuCG::odd_cg(void *resX, void *newOddB) {
     CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream2));
 
 #ifdef PRINT_RATIO
-    if (numIterations_ % 10 == 0) {
-      printf("odd cg iteration %d, rsdNorm = %e, bNorm = %e, ratio = %e\n", numIterations_, rsdNorm, bNorm,
-             rsdNorm / bNorm);
+    {
+      printf("cg iteration %d, norm(r) = %e, norm(b) = %e, norm(r) / norm(b) = %e, target = %e\n", numIterations_,
+             rsdNorm, bNorm, rsdNorm / bNorm, rsdTarget_);
     }
 #endif
     // if converge then return x
@@ -231,25 +238,6 @@ bool QcuCG::even_cg(void *resEvenX, void *evenB) {
   generateEvenB(resEvenX, evenB); // resEvenX is newEvenB
   return true;
 }
-// TODO
-// there, qcuInvert inputs full fermion field, and outputs full fermion field
-// inputB = cgParam_->fermionInB
-// resX = cgParam_->fermionOutX
-void QcuCG::qcuInvert() {
-  void *resX = cgParam_->fermionOutX;
-  void *inputb = cgParam_->fermionInB;
-  bool res = false;
-  generateOddB(newOddB_, tmp1_, tmp2_); // first, generate new oddB
-
-  numIterations_ = 0; // 迭代次数重置
-  res = odd_cg(oddX_, newOddB_);
-  if (!res) {
-    printf("odd cg failed\n");
-    return;
-  }
-  res = even_cg(evenX_, evenB_);
-  printf("CG inverter succeed in %d iterations\n", numIterations_);
-}
 
 // Comment: (A_{oo} + \kappa^2 D_{oe} A_{ee}^{-1} D_{eo}) x_o = \kappa D_{oe}A_{ee}^{-1}b_e + b_o
 // then newOddB = \kappa D_{oe}A_{ee}^{-1}b_e + b_o
@@ -270,36 +258,29 @@ void QcuCG::generateOddB(void *new_b, void *tempVec1, void *tempVec2) {
   DslashParam *dslashParam = dslash_->dslashParam_;
 
   dslashParam->parity = ODD_PARITY;
-  QCU_DAGGER_FLAG daggerFlag = QCU_DAGGER_NO;
+  dslashParam->daggerFlag = QCU_DAGGER_NO;
+  singleDslash_(tempVec1, evenB_); // tempVec1 = D_{oe}b_e
 
-  // tempVec1 = D_{oe}b_e
-  singleDslash_(tempVec1, evenB_);
-  CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
-  CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream2));
-  // tempVec1 = right_b = \kappa D_{oe}b_e + b_o
+  // tempVec1 = right_b = \kappa tempVec1 + b_o = \kappa D_{oe}b_e + b_o
   saxpy_(tempVec1, kappa, tempVec1, oddB_, vectorLength, cgParam_->stream1);
-
-  CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
+  CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1)); // 现在已经确定tempVec1，暂时不再更改，也就是方程右侧right_b
 
   if (dslashType_ == DSLASH_WILSON) {
     // dagger
     dslashParam->parity = EVEN_PARITY;
     dslashParam->daggerFlag = QCU_DAGGER_YES;
-    singleDslash_(tempVec2, tempVec1); // tempVec2 = D^{\dagger}_{oe} right_b
-    CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
-    CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream2));
+    singleDslash_(tempVec2, tempVec1); // tempVec2 = D^{\dagger}_{eo} right_b
 
     dslashParam->parity = ODD_PARITY;
     dslashParam->daggerFlag = QCU_DAGGER_YES;
     singleDslash_(new_b, tempVec2); // new_b = D^{\dagger}_{oe} D^{\dagger}_{eo} right_b
-    CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
-    CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream2));
 
     // new_b = tempVec1 - kappa ^ 2 * new_b
     //       = right_b - kappa ^ 2 * D^{\dagger}_{oe} D^{\dagger}_{eo} right_b
     //       = (I - kappa ^ 2 * D^{\dagger}_{oe} D^{\dagger}_{eo}) right_b
     saxpy_(new_b, minusKappaSquare, new_b, tempVec1, vectorLength, cgParam_->stream1);
     CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
+
   } else {
     assert(0);
   }
@@ -324,12 +305,28 @@ void QcuCG::generateEvenB(void *newEvenB, void *evenB) {
   dslashParam->parity = EVEN_PARITY;
   dslashParam->daggerFlag = QCU_DAGGER_NO;
   singleDslash_(newEvenB, oddX_); // newEvenB = D_{eo} x_o
-  CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
-  CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream2));
+  // CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
+  // CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream2));
 
   // newEvenB = \kappa D_{eo} x_o + evenB
   saxpy_(newEvenB, kappa, newEvenB, evenB, vectorLength, cgParam_->stream1);
   CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
 }
 
+// there, qcuInvert inputs full fermion field, and outputs full fermion field
+// inputB = cgParam_->fermionInB
+// resX = cgParam_->fermionOutX
+void QcuCG::qcuInvert() {
+  bool res = false;
+  generateOddB(newOddB_, tmp1_, tmp2_); // first, generate new oddB
+
+  numIterations_ = 0; // 迭代次数重置
+  res = odd_cg(oddX_, newOddB_);
+  if (!res) {
+    printf("odd cg failed\n");
+    return;
+  }
+  res = even_cg(evenX_, evenB_);
+  printf("CG inverter succeed in %d iterations\n", numIterations_);
+}
 END_NAMESPACE(qcu)

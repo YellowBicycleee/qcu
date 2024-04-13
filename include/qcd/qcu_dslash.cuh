@@ -29,7 +29,7 @@ struct DslashParam : public QcuParam {
   int Nt;
   int daggerFlag;
 
-  double kappa;
+  const double kappa;
   void *fermionIn;
   void *fermionOut;
   void *gauge;
@@ -46,23 +46,26 @@ struct DslashParam : public QcuParam {
   cudaStream_t stream2;
 
   // constructor
-  DslashParam(void *pFermionIn, void *pFermionOut, void *pGauge, int pLx, int pLy, int pLz, int pLt,
-              int pParity, int pNx, int pNy, int pNz, int pNt, int pKappa, int pDaggerFlag = 0,
-              QcuMemPool *pMemPool = nullptr, MsgHandler *pMsgHandler = nullptr,
-              QcuComm *pQcuComm = nullptr, cudaStream_t pStream1 = NULL,
+  DslashParam(void *pFermionIn, void *pFermionOut, void *pGauge, int pLx, int pLy, int pLz, int pLt, int pParity,
+              int pNx, int pNy, int pNz, int pNt, double pKappa, int pDaggerFlag = 0, QcuMemPool *pMemPool = nullptr,
+              MsgHandler *pMsgHandler = nullptr, QcuComm *pQcuComm = nullptr, cudaStream_t pStream1 = NULL,
               cudaStream_t pStream2 = NULL)
-      : fermionIn(pFermionIn), fermionOut(pFermionOut), gauge(pGauge), Lx(pLx), Ly(pLy), Lz(pLz),
-        Lt(pLt), parity(pParity), Nx(pNx), Ny(pNy), Nz(pNz), Nt(pNt), kappa(pKappa),
-        daggerFlag(pDaggerFlag), memPool(pMemPool), msgHandler(pMsgHandler), qcuComm(pQcuComm),
-        tempFermionIn1(nullptr), tempFermionIn2(nullptr), stream1(pStream1), stream2(pStream2) {}
+      : fermionIn(pFermionIn), fermionOut(pFermionOut), gauge(pGauge), Lx(pLx), Ly(pLy), Lz(pLz), Lt(pLt),
+        parity(pParity), Nx(pNx), Ny(pNy), Nz(pNz), Nt(pNt), kappa(pKappa), daggerFlag(pDaggerFlag), memPool(pMemPool),
+        msgHandler(pMsgHandler), qcuComm(pQcuComm), tempFermionIn1(nullptr), tempFermionIn2(nullptr), stream1(pStream1),
+        stream2(pStream2) {
+#ifdef DEBUG
+    printf("In DslashParam constructor, pKappa = %lf, kappa = %lf\n", pKappa, kappa);
+#endif
+  }
 
   // copy constructor
   DslashParam(const DslashParam &rhs)
-      : fermionIn(rhs.fermionIn), fermionOut(rhs.fermionOut), gauge(rhs.gauge), Lx(rhs.Lx),
-        Ly(rhs.Ly), Lz(rhs.Lz), Lt(rhs.Lt), parity(rhs.parity), Nx(rhs.Nx), Ny(rhs.Ny), Nz(rhs.Nz),
-        Nt(rhs.Nt), kappa(rhs.kappa), daggerFlag(rhs.daggerFlag), memPool(rhs.memPool),
-        msgHandler(rhs.msgHandler), qcuComm(rhs.qcuComm), tempFermionIn1(rhs.tempFermionIn1),
-        tempFermionIn2(rhs.tempFermionIn2), stream1(rhs.stream1), stream2(rhs.stream2) {}
+      : fermionIn(rhs.fermionIn), fermionOut(rhs.fermionOut), gauge(rhs.gauge), Lx(rhs.Lx), Ly(rhs.Ly), Lz(rhs.Lz),
+        Lt(rhs.Lt), parity(rhs.parity), Nx(rhs.Nx), Ny(rhs.Ny), Nz(rhs.Nz), Nt(rhs.Nt), kappa(rhs.kappa),
+        daggerFlag(rhs.daggerFlag), memPool(rhs.memPool), msgHandler(rhs.msgHandler), qcuComm(rhs.qcuComm),
+        tempFermionIn1(rhs.tempFermionIn1), tempFermionIn2(rhs.tempFermionIn2), stream1(rhs.stream1),
+        stream2(rhs.stream2) {}
 
   void changeParity() { parity = 1 - parity; }
 };
@@ -80,7 +83,6 @@ public:
   virtual void preApply() = 0;
   virtual void postApply() = 0;
 };
-
 
 struct DslashMV : QcuSPMV {
 

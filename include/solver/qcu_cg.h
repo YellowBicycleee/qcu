@@ -62,20 +62,6 @@ struct CGParam : public QcuParam {
         Ly(dslashParam->Ly), Lz(dslashParam->Lz), Lt(dslashParam->Lt), Nx(dslashParam->Nx), Ny(dslashParam->Ny),
         Nz(dslashParam->Nz), Nt(dslashParam->Nt), memPool(dslashParam->memPool), msgHandler(dslashParam->msgHandler),
         qcuComm(dslashParam->qcuComm) {}
-
-  // 目前只允许强制转换为无dagger的even，
-  // DslashParam DslashParam()() {
-  operator DslashParam() const {
-    // DslashParam dslashParam;
-    QCU_PARITY parity = EVEN_PARITY;
-    QCU_DAGGER_FLAG daggerFlag = QCU_DAGGER_NO;
-
-    void *fermionInB = static_cast<Complex *>(fermionInB) + (1 - parity) * Lx * Ly * Lz * Lt * Ns * Nc / 2;
-    void *fermionOutX = static_cast<Complex *>(fermionOutX) + parity * Lx * Ly * Lz * Lt * Ns * Nc / 2;
-
-    return DslashParam(fermionInB, fermionOutX, gauge, Lx, Ly, Lz, Lt, parity, Nx, Ny, Nz, Nt, kappa, daggerFlag,
-                       memPool, msgHandler, qcuComm, stream1, stream2);
-  }
 };
 
 class QcuCG {
@@ -130,17 +116,23 @@ public:
   QcuCG(DSLASH_TYPE dslashType, CGParam *cgParam, double rsdTarget = 1e-10, int maxIterations = 1000,
         int blockSize = 256)
       : dslashType_(dslashType), cgParam_(cgParam), blockSize_(blockSize),
-        innerProd_(QcuInnerProd(cgParam->msgHandler)), norm2_(QcuNorm2(cgParam->msgHandler)),
-        dslashParam_(new DslashParam(DslashParam(*cgParam_))), dslashTempVec1_(nullptr), dslashTempVec2_(nullptr),
-        numIterations_(0), maxIterations_(maxIterations), rsdTarget_(rsdTarget) {
+        innerProd_(QcuInnerProd(cgParam->msgHandler)), norm2_(QcuNorm2(cgParam->msgHandler)), dslashTempVec1_(nullptr),
+        dslashTempVec2_(nullptr), numIterations_(0), maxIterations_(maxIterations), rsdTarget_(rsdTarget) {
 
     allocateTempVectors();
 
     if (dslashType_ == DSLASH_TYPE::DSLASH_WILSON) {
-      // dslashParam_ = new DslashParam(DslashParam(cgParam_));
+
+      dslashParam_ = new DslashParam(cgParam_->fermionInB, cgParam_->fermionOutX, cgParam_->gauge, cgParam_->Lx,
+                                     cgParam_->Ly, cgParam_->Lz, cgParam_->Lt, EVEN_PARITY, cgParam_->Nx, cgParam_->Ny,
+                                     cgParam_->Nz, cgParam_->Nt, cgParam_->kappa, QCU_DAGGER_NO, cgParam_->memPool,
+                                     cgParam_->msgHandler, cgParam_->qcuComm, cgParam_->stream1, cgParam_->stream2);
       dslashParam_->tempFermionIn1 = dslashTempVec1_;
       dslashParam_->tempFermionIn2 = dslashTempVec2_;
-
+#ifdef DEBUG
+      printf("in function %s, line = %d, kappa = %lf, dslashParam_ = %p\n", __FUNCTION__, __LINE__, dslashParam_->kappa,
+             dslashParam_);
+#endif
       dslash_ = new WilsonDslash(dslashParam_, blockSize_);
       singleDslash_ = DslashMV(dslash_, blockSize_);
       cgIterMV_Odd_ = CGDslashMV_Odd(dslash_, blockSize_);
@@ -154,13 +146,35 @@ public:
     int Lz = cgParam_->Lz;
     int Lt = cgParam_->Lt;
     int subVol = Lx * Ly * Lz * Lt / 2;
-    // evenFermionIn_ = cgParam_->fermionIn;
-    // oddFermionIn_ =
-    // static_cast<void *>(static_cast<Complex *>(cgParam_->fermionIn) + subVol * Ns * Nc);
+
     evenB_ = cgParam_->fermionInB;
     oddB_ = static_cast<void *>(static_cast<Complex *>(cgParam_->fermionInB) + subVol * Ns * Nc);
     evenX_ = cgParam_->fermionOutX;
     oddX_ = static_cast<void *>(static_cast<Complex *>(cgParam_->fermionOutX) + subVol * Ns * Nc);
+
+#ifdef DEBUG
+    double norm;
+    norm2_(tmp1_, tmp2_, evenB_, cgParam_->Lx * cgParam_->Ly * cgParam_->Lz * cgParam_->Lt * Ns * Nc / 2,
+           cgParam_->stream1);
+    CHECK_CUDA(cudaMemcpyAsync(&norm, tmp1_, sizeof(double), cudaMemcpyDeviceToHost, cgParam_->stream1));
+    CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
+    printf("IN FILE qcu_cg.cu, FUNCTION qcuInvert, LINE %d, norm of input even b = %e. addr(evenB_) = %p\n", __LINE__,
+           norm, evenB_);
+
+    norm2_(tmp1_, tmp2_, oddB_, cgParam_->Lx * cgParam_->Ly * cgParam_->Lz * cgParam_->Lt * Ns * Nc / 2,
+           cgParam_->stream1);
+    CHECK_CUDA(cudaMemcpyAsync(&norm, tmp1_, sizeof(double), cudaMemcpyDeviceToHost, cgParam_->stream1));
+    CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
+    printf("IN FILE qcu_cg.cu, FUNCTION qcuInvert, LINE %d, norm of input odd b = %e. addr(oddB_) = %p\n", __LINE__,
+           norm, oddB_);
+
+    norm2_(tmp1_, tmp2_, evenB_, cgParam_->Lx * cgParam_->Ly * cgParam_->Lz * cgParam_->Lt * Ns * Nc,
+           cgParam_->stream1);
+    CHECK_CUDA(cudaMemcpyAsync(&norm, tmp1_, sizeof(double), cudaMemcpyDeviceToHost, cgParam_->stream1));
+    CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
+    printf("IN FILE qcu_cg.cu, FUNCTION qcuInvert, LINE %d, full norm of input b = %e. addr(evenB_) = %p\n", __LINE__,
+           norm, evenB_);
+#endif
   }
 
   // virtual void qcuInvert(void *resX, void *inputb);
@@ -176,10 +190,5 @@ public:
     }
   }
 };
-
-void qcuCgInvert(void *resX, void *inputb, CGParam *cgParam, double diffTarget = 1e-10, int blockSize = 256) {
-  QcuCG qcuCG(DSLASH_TYPE::DSLASH_WILSON, cgParam, diffTarget, blockSize);
-  // qcuCG.qcuInvert(resX, inputb);
-}
 
 END_NAMESPACE(qcu)

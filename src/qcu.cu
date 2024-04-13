@@ -4,8 +4,8 @@
 #include "qcu.h"
 #include "qcu_macro.cuh"
 #include "qcu_storage/qcu_storage.cuh"
+#include "solver/qcu_cg.h"
 #include <cuda.h>
-
 #define PRINT_EXEC_TIME
 #define PRINT_ALLOCATED_MEM_SIZE
 
@@ -61,14 +61,17 @@ public:
     CHECK_CUDA(cudaStreamCreate(&stream2_));
     CHECK_CUDA(cudaEventCreate(&startEvent_));
     CHECK_CUDA(cudaEventCreate(&stopEvent_));
-    int vol = Lx_ * Ly_ * Lz_ * Lt_ / 2;
+    int vol = Lx_ * Ly_ * Lz_ * Lt_;
 
     // TODO：此部分分配内存过剩，看一下怎么减少
-    CHECK_CUDA(cudaMalloc(&coalescedFermionIn_, sizeof(double) * 2 * vol * 2 * Ns * Nc));
-    CHECK_CUDA(cudaMalloc(&coalescedFermionOut_, sizeof(double) * 2 * vol * 2 * Ns * Nc));
+    CHECK_CUDA(cudaMalloc(&coalescedFermionIn_, sizeof(double) * 2 * vol * Ns * Nc));
+    CHECK_CUDA(cudaMalloc(&coalescedFermionOut_, sizeof(double) * 2 * vol * Ns * Nc));
     msgHandler_ = new MsgHandler();
     qcuComm_ = new QcuComm(procNx_, procNy_, procNz_, procNt_);
     memPoolInit();
+#ifdef DEBUG
+    printf("Qcu mass = %lf, kappa_ = %lf\n", mass_, kappa_);
+#endif
   }
   virtual ~Qcu() {
     CHECK_CUDA(cudaStreamDestroy(stream1_));
@@ -130,13 +133,11 @@ public:
   // virtual void cloverDslash() {}
   // virtual void cloverMatMul() {}
   // TODO : invert (cg inverter)
-  virtual void qcuInvert(void *fermionOutX, void *fermionInB);
+  virtual void qcuInvert(void *fermionOutX, void *fermionInB, double diffTarget, int maxIterations);
 };
 
 void Qcu::wilsonDslashMultiProc(void *fermionOut, void *fermionIn, int parity) {
-  // if (procNx_ == 1 && procNy_ == 1 && procNz_ == 1 && procNt_ == 1) {
-  //   return;
-  // }
+
   // shiftStorage
   int daggerFlag = 0;
   fermionIn_ = fermionIn;
@@ -149,13 +150,14 @@ void Qcu::wilsonDslashMultiProc(void *fermionOut, void *fermionIn, int parity) {
   CHECK_CUDA(cudaEventRecord(startEvent_, stream1_));
   WilsonDslash dslash(&dslashParam, 256);
 
-  dslash.preApply();
-  dslash.apply();
-  dslash.postApply();
+  // dslash.preApply();
+  // dslash.apply();
+  // dslash.postApply();
 
+  DslashMV dslashMv(&dslash);
+  dslashMv(coalescedFermionOut_, coalescedFermionIn_);
   CHECK_CUDA(cudaEventRecord(stopEvent_, stream1_));
   CHECK_CUDA(cudaEventSynchronize(stopEvent_));
-
 #ifdef PRINT_EXEC_TIME
   float elapsedTime;
   CHECK_CUDA(cudaEventElapsedTime(&elapsedTime, startEvent_, stopEvent_));
@@ -183,7 +185,7 @@ void Qcu::shiftFermionStorage(void *dst, void *src, int shiftDir) {
   }
 }
 
-void Qcu::qcuInvert(void *fermionOutX, void *fermionInB) {
+void Qcu::qcuInvert(void *fermionOutX, void *fermionInB, double diffTarget, int maxIterations) {
   int vol = Lx_ * Ly_ * Lz_ * Lt_;
   int halfVol = vol / 2;
   void *originFermionInEven = fermionInB;
@@ -199,10 +201,32 @@ void Qcu::qcuInvert(void *fermionOutX, void *fermionInB) {
   // shift storage to coalesce
   shiftFermionStorage(newFermionInEven, originFermionInEven, TO_COALESCE);
   shiftFermionStorage(newFermionInOdd, originFermionInOdd, TO_COALESCE);
+#ifdef DEBUG
+  QcuNorm2 norm2(msgHandler_, 256);
+  void *temp1;
+  void *temp2;
+  double norm;
+  CHECK_CUDA(cudaMalloc(&temp1, sizeof(Complex) * vol * Ns * Nc));
+  CHECK_CUDA(cudaMalloc(&temp2, sizeof(Complex) * vol * Ns * Nc));
+  norm2(temp1, temp2, fermionInB, vol * Ns * Nc);
+  CHECK_CUDA(cudaDeviceSynchronize());
+  CHECK_CUDA(cudaMemcpy(&norm, temp1, sizeof(double), cudaMemcpyDeviceToHost));
+  printf("__FILE__ = %s, __LINE__ = %d, norm = %lf, addr(b) = %p\n", __FILE__, __LINE__, norm, fermionInB);
+  norm2(temp1, temp2, newFermionInEven, vol * Ns * Nc);
+  CHECK_CUDA(cudaDeviceSynchronize());
+  CHECK_CUDA(cudaMemcpy(&norm, temp1, sizeof(double), cudaMemcpyDeviceToHost));
+  printf("__FILE__ = %s, __LINE__ = %d, coalesced norm = %lf, addr(newB) = %p\n", __FILE__, __LINE__, norm,
+         newFermionInEven);
+#endif
 
   // CG Inverter
+  // generate CGParam
+  assert(coalescedGauge_ != nullptr);
+  CGParam cgParam(coalescedFermionIn_, coalescedFermionOut_, coalescedGauge_, nullptr, nullptr, kappa_, Lx_, Ly_, Lz_,
+                  Lt_, procNx_, procNy_, procNz_, procNt_, memPool_, msgHandler_, qcuComm_, stream1_, NULL);
 
-
+  QcuCG qcuWilsonSolver_CG(DSLASH_WILSON, &cgParam, diffTarget, maxIterations, 256);
+  qcuWilsonSolver_CG.qcuInvert();
   // shift back
   shiftFermionStorage(originFermionOutEven, newFermionOutEven, TO_NON_COALESCE);
   shiftFermionStorage(originFermionOutOdd, newFermionOutOdd, TO_NON_COALESCE);
@@ -235,7 +259,8 @@ void dslashQcu(void *fermion_out, void *fermion_in, void *gauge, QcuParam *param
 void fullDslashQcu(void *fermion_out, void *fermion_in, void *gauge, QcuParam *param, int dagger_flag) {}
 void cg_inverter(void *x_vector, void *b_vector, void *gauge, QcuParam *param, double p_max_prec, double p_kappa) {
   // p_kappa is useless
-  qcu_ptr->qcuInvert(x_vector, b_vector);
+  // qcu_ptr->qcuInvert(x_vector, b_vector, p_max_prec);
+  qcu_ptr->qcuInvert(x_vector, b_vector, p_max_prec, 1000);
 }
 
 void loadQcuGauge(void *gauge, QcuParam *param) { qcu_ptr->loadGauge(gauge); }
