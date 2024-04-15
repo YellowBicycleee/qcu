@@ -38,7 +38,7 @@ void QcuNorm2::operator()(_genvector result, _genvector temp_result, _genvector 
                           cudaStream_t stream) {
   int gridSize = (vectorLength + blockSize - 1) / blockSize;
   // 第三个参数是字节大小
-  norm2Square<<<gridSize, blockSize, blockSize * sizeof(double), stream>>>(temp_result, operand, vectorLength);
+  norm2Square<<<gridSize, blockSize, blockSize * sizeof(double) * 2, stream>>>(temp_result, operand, vectorLength);
   // printf("QcuNorm2:: %d %d\n", gridSize, blockSize);
   doubleReduceSum<<<1, blockSize, blockSize * sizeof(double), stream>>>(temp_result, temp_result, gridSize);
 
