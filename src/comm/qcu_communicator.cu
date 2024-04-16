@@ -31,15 +31,15 @@ QcuComm::QcuComm(int Nx, int Ny, int Nz, int Nt) {
   processCoord[2] = processRank / Nt % Nz;
   processCoord[1] = processRank / Nt / Nz % Ny;
   processCoord[0] = processRank / Nt / Nz / Ny;
-  printf("[pid=%d], (%d, %d, %d, %d)\n", processRank, processCoord[0], processCoord[1],
-         processCoord[2], processCoord[3]);
+  // printf("[pid=%d], (%d, %d, %d, %d)\n", processRank, processCoord[0], processCoord[1],
+  //        processCoord[2], processCoord[3]);
 
   for (int i = 0; i < Nd; i++) {
     for (int j = 0; j < DIRECTIONS; j++) {
       neighbor_rank[i][j] = calcAdjProcess(i, j);
 
-      printf("[pid = %d], DIM = %d, DIR = %d, neighbor = %d\n", processRank, i, j,
-             neighbor_rank[i][j]);
+      // printf("[ %d], DIM = %d, DIR = %d, neighbor = %d\n", processRank, i, j,
+      //        neighbor_rank[i][j]);
     }
   }
 }

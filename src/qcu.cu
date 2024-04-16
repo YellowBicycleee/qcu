@@ -6,8 +6,8 @@
 #include "qcu_storage/qcu_storage.cuh"
 #include "solver/qcu_cg.h"
 #include <cuda.h>
-#define PRINT_EXEC_TIME
-#define PRINT_ALLOCATED_MEM_SIZE
+// #define PRINT_EXEC_TIME
+// #define PRINT_ALLOCATED_MEM_SIZE
 
 BEGIN_NAMESPACE(qcu)
 
@@ -223,7 +223,7 @@ void Qcu::qcuInvert(void *fermionOutX, void *fermionInB, double diffTarget, int 
   // generate CGParam
   assert(coalescedGauge_ != nullptr);
   CGParam cgParam(coalescedFermionIn_, coalescedFermionOut_, coalescedGauge_, nullptr, nullptr, kappa_, Lx_, Ly_, Lz_,
-                  Lt_, procNx_, procNy_, procNz_, procNt_, memPool_, msgHandler_, qcuComm_, stream1_, NULL);
+                  Lt_, procNx_, procNy_, procNz_, procNt_, memPool_, msgHandler_, qcuComm_, stream1_, stream2_);
 
   QcuCG qcuWilsonSolver_CG(DSLASH_WILSON, &cgParam, diffTarget, maxIterations, 256);
   qcuWilsonSolver_CG.qcuInvert();

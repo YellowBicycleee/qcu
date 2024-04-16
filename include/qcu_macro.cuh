@@ -1,5 +1,5 @@
 #pragma once
-#define DEBUG
+// #define DEBUG
 #define BEGIN_NAMESPACE(_) namespace _ {
 #define END_NAMESPACE(_) }
 

@@ -182,7 +182,7 @@ void WilsonDslash::postDslash(int dim, int dir, int daggerFlag) {
   }
 }
 
-void WilsonDslash::dslashMpiIsendrecv(int dim) {
+void WilsonDslash::dslashNcclIsendrecv(int dim) {
   int vectorLength;
 
   void *sendbuf;
@@ -232,10 +232,12 @@ void WilsonDslash::dslashMpiIsendrecv(int dim) {
   // CHECK_NCCL(ncclGroupEnd());
 }
 
-void WilsonDslash::dslashMpiWait() {
+void WilsonDslash::dslashNcclWait() {
   cudaStream_t stream1 = dslashParam_->stream1;
   CHECK_CUDA(cudaStreamSynchronize(stream1));
 }
+
+
 
 void WilsonDslash::preApply() {
   int daggerFlag = dslashParam_->daggerFlag;
@@ -262,19 +264,19 @@ void WilsonDslash::preApply() {
   // MPI_Isend MPI_Irecv
   CHECK_NCCL(ncclGroupStart());
   if (dslashParam_->Nx > 1) {
-    dslashMpiIsendrecv(X_DIM);
+    dslashNcclIsendrecv(X_DIM);
   }
 
   if (dslashParam_->Ny > 1) {
-    dslashMpiIsendrecv(Y_DIM);
+    dslashNcclIsendrecv(Y_DIM);
   }
 
   if (dslashParam_->Nz > 1) {
-    dslashMpiIsendrecv(Z_DIM);
+    dslashNcclIsendrecv(Z_DIM);
   }
 
   if (dslashParam_->Nt > 1) {
-    dslashMpiIsendrecv(T_DIM);
+    dslashNcclIsendrecv(T_DIM);
   }
   CHECK_NCCL(ncclGroupEnd());
 // #ifdef DEBUG
@@ -287,7 +289,7 @@ void WilsonDslash::postApply() {
   // MPI_Wait
   if (dslashParam_->Nx > 1 || dslashParam_->Ny > 1 || dslashParam_->Nz > 1 ||
       dslashParam_->Nt > 1) {
-    dslashMpiWait();
+    dslashNcclWait();
   }
 
 // #ifdef DEBUG

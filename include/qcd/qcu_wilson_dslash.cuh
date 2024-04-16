@@ -7,8 +7,10 @@ class WilsonDslash : public Dslash {
 private:
   void preDslash(int dim, int dir, int daggerFlag = 0);
   void postDslash(int dim, int dir, int daggerFlag = 0);
-  void dslashMpiIsendrecv(int dim);
-  void dslashMpiWait();
+  void preDslashMPI(int dim, int dir, int daggerFlag = 0) {}
+  void postDslashMPI(int dim, int dir, int daggerFlag = 0) {}
+  void dslashNcclIsendrecv(int dim);
+  void dslashNcclWait();
 
 public:
   WilsonDslash(DslashParam *param, int blockSize = 256) : Dslash(param, blockSize) {}
