@@ -43,7 +43,7 @@ protected:
 
   cudaStream_t stream1_;
   cudaStream_t stream2_;
-
+  cudaStream_t commStreams_[Nd * DIRECTIONS];
   cudaEvent_t startEvent_;
   cudaEvent_t stopEvent_;
 
@@ -59,6 +59,10 @@ public:
         cloverMatrix_(nullptr), cloverInvMatrix_(nullptr), memPool_(nullptr), msgHandler_(nullptr), qcuComm_(nullptr) {
     CHECK_CUDA(cudaStreamCreate(&stream1_));
     CHECK_CUDA(cudaStreamCreate(&stream2_));
+    for(int i = 0; i < Nd * DIRECTIONS; i++) {
+      CHECK_CUDA(cudaStreamCreate(&commStreams_[i]));
+    }
+
     CHECK_CUDA(cudaEventCreate(&startEvent_));
     CHECK_CUDA(cudaEventCreate(&stopEvent_));
     int vol = Lx_ * Ly_ * Lz_ * Lt_;
@@ -146,18 +150,21 @@ void Qcu::wilsonDslashMultiProc(void *fermionOut, void *fermionIn, int parity) {
 
   DslashParam dslashParam(coalescedFermionIn_, coalescedFermionOut_, coalescedGauge_, Lx_, Ly_, Lz_, Lt_, parity,
                           procNx_, procNy_, procNz_, procNt_, kappa_, daggerFlag, memPool_, msgHandler_, qcuComm_,
-                          stream1_, stream2_);
+                          stream1_, stream2_, commStreams_);
   CHECK_CUDA(cudaEventRecord(startEvent_, stream1_));
   WilsonDslash dslash(&dslashParam, 256);
 
   // dslash.preApply();
   // dslash.apply();
   // dslash.postApply();
+  dslash.preApply2();
+  dslash.apply();
+  dslash.postApply2();
 
-  DslashMV dslashMv(&dslash);
-  dslashMv(coalescedFermionOut_, coalescedFermionIn_);
-  CHECK_CUDA(cudaEventRecord(stopEvent_, stream1_));
-  CHECK_CUDA(cudaEventSynchronize(stopEvent_));
+  // DslashMV dslashMv(&dslash);
+  // dslashMv(coalescedFermionOut_, coalescedFermionIn_);
+  // CHECK_CUDA(cudaEventRecord(stopEvent_, stream1_));
+  // CHECK_CUDA(cudaEventSynchronize(stopEvent_));
 #ifdef PRINT_EXEC_TIME
   float elapsedTime;
   CHECK_CUDA(cudaEventElapsedTime(&elapsedTime, startEvent_, stopEvent_));
