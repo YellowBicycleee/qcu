@@ -18,6 +18,7 @@ enum DslashType {
 struct QcuParam {};
 
 struct DslashParam : public QcuParam {
+  // cosnt Qcu
   int Lx;
   int Ly;
   int Lz;
@@ -118,6 +119,9 @@ class Dslash {
   virtual void apply() = 0;
   virtual void preApply() = 0;
   virtual void postApply() = 0;
+
+  virtual void preApply2() = 0;
+  virtual void postApply2() = 0;
 };
 
 struct DslashMV : QcuSPMV {

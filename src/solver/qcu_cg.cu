@@ -11,6 +11,8 @@ static inline bool ifConverge(double target, double rsdNorm, double bNorm) { ret
 // WILSON
 void CGDslashMV_Odd::operator()(_genvector result, _genvector src, cudaStream_t stream) {
   DslashParam *dslashParam = dslash->dslashParam_;
+  DslashMV singleDslash(dslash, blockSize);
+
   int Lx = dslashParam->Lx;
   int Ly = dslashParam->Ly;
   int Lz = dslashParam->Lz;
@@ -30,23 +32,25 @@ void CGDslashMV_Odd::operator()(_genvector result, _genvector src, cudaStream_t 
   // no-dagger
   dslashParam->parity = EVEN_PARITY;
   dslashParam->daggerFlag = QCU_DAGGER_NO;
-  dslashParam->fermionIn = src;
-  dslashParam->fermionOut = tempFermionIn1;
-  dslash->preApply();
-  dslash->apply();
-  dslash->postApply(); // tempFermionIn1 = D_{eo} x_{o}
+  // dslashParam->fermionIn = src;
+  // dslashParam->fermionOut = tempFermionIn1;
+  singleDslash(tempFermionIn1, src);
+  // dslash->preApply();
+  // dslash->apply();
+  // dslash->postApply(); // tempFermionIn1 = D_{eo} x_{o}
   // CHECK_CUDA(cudaStreamSynchronize(stream1));    // postApply()只需要同步stream2
-  CHECK_CUDA(cudaStreamSynchronize(stream2));
+  // CHECK_CUDA(cudaStreamSynchronize(stream2));
 
   dslashParam->parity = ODD_PARITY;
   dslashParam->daggerFlag = QCU_DAGGER_NO;
-  dslashParam->fermionIn = tempFermionIn1;
-  dslashParam->fermionOut = tempFermionIn2;
-  dslash->preApply();
-  dslash->apply();
-  dslash->postApply(); // tempFermionIn2 = D_{oe} D_{eo} x_{o}
+  singleDslash(tempFermionIn2, tempFermionIn1);
+  // dslashParam->fermionIn = tempFermionIn1;
+  // dslashParam->fermionOut = tempFermionIn2;
+  // dslash->preApply2();
+  // dslash->apply();
+  // dslash->postApply2(); // tempFermionIn2 = D_{oe} D_{eo} x_{o}
   // CHECK_CUDA(cudaStreamSynchronize(stream1));
-  CHECK_CUDA(cudaStreamSynchronize(stream2));
+  // CHECK_CUDA(cudaStreamSynchronize(stream2));
 
   // 注意：tempFermion2的结果要保留到最后
   saxpyFunc(tempFermionIn2, minusKappaSquare, tempFermionIn2, src, vectorLength, stream1);
@@ -55,23 +59,25 @@ void CGDslashMV_Odd::operator()(_genvector result, _genvector src, cudaStream_t 
   // dagger
   dslashParam->parity = EVEN_PARITY;
   dslashParam->daggerFlag = QCU_DAGGER_YES;
-  dslashParam->fermionIn = tempFermionIn2;
-  dslashParam->fermionOut = tempFermionIn1;
-  dslash->preApply();
-  dslash->apply();
-  dslash->postApply(); // tempFermionIn1 = D^{\dagger}_{eo} tempFermionIn2
+  singleDslash(tempFermionIn1, tempFermionIn2);
+  // dslashParam->fermionIn = tempFermionIn2;
+  // dslashParam->fermionOut = tempFermionIn1;
+  // dslash->preApply2();
+  // dslash->apply();
+  // dslash->postApply2(); // tempFermionIn1 = D^{\dagger}_{eo} tempFermionIn2
   // CHECK_CUDA(cudaStreamSynchronize(stream1));
-  CHECK_CUDA(cudaStreamSynchronize(stream2));
+  // CHECK_CUDA(cudaStreamSynchronize(stream2));
 
   dslashParam->parity = ODD_PARITY;
   dslashParam->daggerFlag = QCU_DAGGER_YES;
-  dslashParam->fermionIn = tempFermionIn1;
-  dslashParam->fermionOut = result;
-  dslash->preApply();
-  dslash->apply();
-  dslash->postApply(); // result = D^{\dagger}_{oe} D^{\dagger}_{eo} tempFermionIn2
+  singleDslash(result, tempFermionIn1);
+  // dslashParam->fermionIn = tempFermionIn1;
+  // dslashParam->fermionOut = result;
+  // dslash->preApply2();
+  // dslash->apply();
+  // dslash->postApply2(); // result = D^{\dagger}_{oe} D^{\dagger}_{eo} tempFermionIn2
   // CHECK_CUDA(cudaStreamSynchronize(stream1));
-  CHECK_CUDA(cudaStreamSynchronize(stream2));
+  // CHECK_CUDA(cudaStreamSynchronize(stream2));
 
   // result = tempFermionIn2 - kappa^2 * result
   saxpyFunc(result, minusKappaSquare, result, tempFermionIn2, vectorLength, stream1);

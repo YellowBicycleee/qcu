@@ -80,6 +80,10 @@ public:
   virtual ~Qcu() {
     CHECK_CUDA(cudaStreamDestroy(stream1_));
     CHECK_CUDA(cudaStreamDestroy(stream2_));
+    for(int i = 0; i < Nd * DIRECTIONS; i++) {
+      CHECK_CUDA(cudaStreamDestroy(commStreams_[i]));
+    }
+
     CHECK_CUDA(cudaEventDestroy(startEvent_));
     CHECK_CUDA(cudaEventDestroy(stopEvent_));
 
@@ -130,13 +134,7 @@ public:
   void loadGauge(void *gauge);
   void shiftFermionStorage(void *dst, void *src, int shiftDir);
 
-  // virtual void wilsonDslash(void *fermionOut, void *fermionIn, int parity);
   virtual void wilsonDslashMultiProc(void *fermionOut, void *fermionIn, int parity);
-  // virtual void wilsonMatMul() {}
-  // TODO : dslash clover
-  // virtual void cloverDslash() {}
-  // virtual void cloverMatMul() {}
-  // TODO : invert (cg inverter)
   virtual void qcuInvert(void *fermionOutX, void *fermionInB, double diffTarget, int maxIterations);
 };
 
@@ -157,14 +155,14 @@ void Qcu::wilsonDslashMultiProc(void *fermionOut, void *fermionIn, int parity) {
   // dslash.preApply();
   // dslash.apply();
   // dslash.postApply();
-  dslash.preApply2();
-  dslash.apply();
-  dslash.postApply2();
+  // dslash.preApply2();
+  // dslash.apply();
+  // dslash.postApply2();
 
-  // DslashMV dslashMv(&dslash);
-  // dslashMv(coalescedFermionOut_, coalescedFermionIn_);
-  // CHECK_CUDA(cudaEventRecord(stopEvent_, stream1_));
-  // CHECK_CUDA(cudaEventSynchronize(stopEvent_));
+  DslashMV dslashMv(&dslash);
+  dslashMv(coalescedFermionOut_, coalescedFermionIn_);
+  CHECK_CUDA(cudaEventRecord(stopEvent_, stream1_));
+  CHECK_CUDA(cudaEventSynchronize(stopEvent_));
 #ifdef PRINT_EXEC_TIME
   float elapsedTime;
   CHECK_CUDA(cudaEventElapsedTime(&elapsedTime, startEvent_, stopEvent_));
@@ -230,7 +228,7 @@ void Qcu::qcuInvert(void *fermionOutX, void *fermionInB, double diffTarget, int 
   // generate CGParam
   assert(coalescedGauge_ != nullptr);
   CGParam cgParam(coalescedFermionIn_, coalescedFermionOut_, coalescedGauge_, nullptr, nullptr, kappa_, Lx_, Ly_, Lz_,
-                  Lt_, procNx_, procNy_, procNz_, procNt_, memPool_, msgHandler_, qcuComm_, stream1_, stream2_);
+                  Lt_, procNx_, procNy_, procNz_, procNt_, memPool_, msgHandler_, qcuComm_, stream1_, stream2_, commStreams_);
 
   QcuCG qcuWilsonSolver_CG(DSLASH_WILSON, &cgParam, diffTarget, maxIterations, 256);
   qcuWilsonSolver_CG.qcuInvert();

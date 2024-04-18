@@ -16,9 +16,8 @@ static __device__ __forceinline__ void copyGauge(Complex *dst, Complex *src) {
 }
 
 // COALESCED MEMORY
-static __device__ __forceinline__ void loadGauge(Complex *u_local, void *gauge_ptr, int direction,
-                                                 const Point &p, int sub_Lx, int Ly, int Lz,
-                                                 int Lt) {
+static __device__ __forceinline__ void loadGauge(Complex *u_local, void *gauge_ptr, int direction, const Point &p,
+                                                 int sub_Lx, int Ly, int Lz, int Lt) {
   Complex *u = p.getCoalescedGaugeAddr(gauge_ptr, direction, sub_Lx, Ly, Lz, Lt);
   int half_vol = sub_Lx * Ly * Lz * Lt;
   for (int i = 0; i < (Nc - 1) * Nc; i++) {
@@ -29,9 +28,8 @@ static __device__ __forceinline__ void loadGauge(Complex *u_local, void *gauge_p
 }
 
 // COALESCED
-static __device__ __forceinline__ void loadVector(Complex *src_local, void *fermion_in,
-                                                  const Point &p, int sub_Lx, int Ly, int Lz,
-                                                  int Lt) {
+static __device__ __forceinline__ void loadVector(Complex *src_local, void *fermion_in, const Point &p, int sub_Lx,
+                                                  int Ly, int Lz, int Lt) {
   Complex *src = p.getCoalescedVectorAddr(fermion_in, sub_Lx, Ly, Lz, Lt);
   int half_vol = sub_Lx * Ly * Lz * Lt;
   for (int i = 0; i < Ns * Nc; i++) {
@@ -41,9 +39,8 @@ static __device__ __forceinline__ void loadVector(Complex *src_local, void *ferm
 }
 
 // COALESCED:
-static __device__ __forceinline__ void storeVector(Complex *dst_local, void *fermion_out,
-                                                   const Point &p, int sub_Lx, int Ly, int Lz,
-                                                   int Lt) {
+static __device__ __forceinline__ void storeVector(Complex *dst_local, void *fermion_out, const Point &p, int sub_Lx,
+                                                   int Ly, int Lz, int Lt) {
   Complex *src = p.getCoalescedVectorAddr(fermion_out, sub_Lx, Ly, Lz, Lt);
   int half_vol = sub_Lx * Ly * Lz * Lt;
   for (int i = 0; i < Ns * Nc; i++) {

@@ -11,6 +11,9 @@ typedef struct QcuParam_s {
 typedef struct QcuGrid_t {
   int grid_size[4];
 } QcuGrid_t;
+
+typedef QcuGrid_t QcuGrid;
+
 void initGridSize(QcuGrid_t *grid, QcuParam *p_param, void *gauge, void *fermion_in,
                   void *fermion_out);
 void dslashQcu(void *fermion_out, void *fermion_in, void *gauge, QcuParam *param, int parity);
