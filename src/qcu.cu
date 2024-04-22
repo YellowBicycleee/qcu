@@ -1,3 +1,5 @@
+#include <cuda.h>
+
 #include "comm/qcu_communicator.h"
 #include "mempool/qcu_mempool.h"
 #include "qcd/qcu_wilson_dslash.cuh"
@@ -5,14 +7,13 @@
 #include "qcu_macro.cuh"
 #include "qcu_storage/qcu_storage.cuh"
 #include "solver/qcu_cg.h"
-#include <cuda.h>
 // #define PRINT_EXEC_TIME
 // #define PRINT_ALLOCATED_MEM_SIZE
 
 BEGIN_NAMESPACE(qcu)
 
 class Qcu {
-protected:
+ protected:
   bool gaugeLoaded_;
 
   double kappa_;
@@ -31,12 +32,12 @@ protected:
 
   void *inputGauge_;
 
-  void *coalescedGauge_;      // coalesced gauge
-  void *coalescedFermionIn_;  // coalesced fermion
-  void *coalescedFermionOut_; // coalesced fermion
+  void *coalescedGauge_;       // coalesced gauge
+  void *coalescedFermionIn_;   // coalesced fermion
+  void *coalescedFermionOut_;  // coalesced fermion
 
-  void *fermionIn_;  // input fermion
-  void *fermionOut_; // output fermion
+  void *fermionIn_;   // input fermion
+  void *fermionOut_;  // output fermion
 
   void *cloverMatrix_;
   void *cloverInvMatrix_;
@@ -51,15 +52,33 @@ protected:
   MsgHandler *msgHandler_;
   QcuComm *qcuComm_;
 
-public:
+ public:
   Qcu(int Lx, int Ly, int Lz, int Lt, int Nx, int Ny, int Nz, int Nt, double mass = 0.0)
-      : Lx_(Lx), Ly_(Ly), Lz_(Lz), Lt_(Lt), procNx_(Nx), procNy_(Ny), procNz_(Nz), procNt_(Nt), mass_(mass),
-        kappa_(1.0 / (2.0 * (4.0 + mass))), gaugeLoaded_(false), inputGauge_(nullptr), coalescedGauge_(nullptr),
-        coalescedFermionIn_(nullptr), coalescedFermionOut_(nullptr), fermionIn_(nullptr), fermionOut_(nullptr),
-        cloverMatrix_(nullptr), cloverInvMatrix_(nullptr), memPool_(nullptr), msgHandler_(nullptr), qcuComm_(nullptr) {
+      : Lx_(Lx),
+        Ly_(Ly),
+        Lz_(Lz),
+        Lt_(Lt),
+        procNx_(Nx),
+        procNy_(Ny),
+        procNz_(Nz),
+        procNt_(Nt),
+        mass_(mass),
+        kappa_(1.0 / (2.0 * (4.0 + mass))),
+        gaugeLoaded_(false),
+        inputGauge_(nullptr),
+        coalescedGauge_(nullptr),
+        coalescedFermionIn_(nullptr),
+        coalescedFermionOut_(nullptr),
+        fermionIn_(nullptr),
+        fermionOut_(nullptr),
+        cloverMatrix_(nullptr),
+        cloverInvMatrix_(nullptr),
+        memPool_(nullptr),
+        msgHandler_(nullptr),
+        qcuComm_(nullptr) {
     CHECK_CUDA(cudaStreamCreate(&stream1_));
     CHECK_CUDA(cudaStreamCreate(&stream2_));
-    for(int i = 0; i < Nd * DIRECTIONS; i++) {
+    for (int i = 0; i < Nd * DIRECTIONS; i++) {
       CHECK_CUDA(cudaStreamCreate(&commStreams_[i]));
     }
 
@@ -73,6 +92,10 @@ public:
     msgHandler_ = new MsgHandler();
     qcuComm_ = new QcuComm(procNx_, procNy_, procNz_, procNt_);
     memPoolInit();
+#ifdef MPI_START_SENDRECV
+    initSendRecv();
+#endif
+
 #ifdef DEBUG
     printf("Qcu mass = %lf, kappa_ = %lf\n", mass_, kappa_);
 #endif
@@ -80,7 +103,7 @@ public:
   virtual ~Qcu() {
     CHECK_CUDA(cudaStreamDestroy(stream1_));
     CHECK_CUDA(cudaStreamDestroy(stream2_));
-    for(int i = 0; i < Nd * DIRECTIONS; i++) {
+    for (int i = 0; i < Nd * DIRECTIONS; i++) {
       CHECK_CUDA(cudaStreamDestroy(commStreams_[i]));
     }
 
@@ -136,10 +159,10 @@ public:
 
   virtual void wilsonDslashMultiProc(void *fermionOut, void *fermionIn, int parity);
   virtual void qcuInvert(void *fermionOutX, void *fermionInB, double diffTarget, int maxIterations);
+  virtual void initSendRecv();
 };
 
 void Qcu::wilsonDslashMultiProc(void *fermionOut, void *fermionIn, int parity) {
-
   // shiftStorage
   int daggerFlag = 0;
   fermionIn_ = fermionIn;
@@ -228,7 +251,8 @@ void Qcu::qcuInvert(void *fermionOutX, void *fermionInB, double diffTarget, int 
   // generate CGParam
   assert(coalescedGauge_ != nullptr);
   CGParam cgParam(coalescedFermionIn_, coalescedFermionOut_, coalescedGauge_, nullptr, nullptr, kappa_, Lx_, Ly_, Lz_,
-                  Lt_, procNx_, procNy_, procNz_, procNt_, memPool_, msgHandler_, qcuComm_, stream1_, stream2_, commStreams_);
+                  Lt_, procNx_, procNy_, procNz_, procNt_, memPool_, msgHandler_, qcuComm_, stream1_, stream2_,
+                  commStreams_);
 
   QcuCG qcuWilsonSolver_CG(DSLASH_WILSON, &cgParam, diffTarget, maxIterations, 256);
   qcuWilsonSolver_CG.qcuInvert();
@@ -237,6 +261,45 @@ void Qcu::qcuInvert(void *fermionOutX, void *fermionInB, double diffTarget, int 
   shiftFermionStorage(originFermionOutOdd, newFermionOutOdd, TO_NON_COALESCE);
 }
 
+// 假设msgHandler已经申请完毕
+void Qcu::initSendRecv() {
+  assert(msgHandler_ != nullptr);
+  int fwdRank;
+  int bwdRank;
+  void *sendBufFWD;
+  void *sendBufBWD;
+  void *recvBufFWD;
+  void *recvBufBWD;
+  int commVecLength[Nd] = {0, 0, 0, 0};
+  if (procNx_ > 1) {
+    commVecLength[X_DIM] = Ly_ * Lz_ * Lt_ / 2 * Ns * Nc;
+  }
+  if (procNy_ > 1) {
+    commVecLength[Y_DIM] = Lx_ * Lz_ * Lt_ / 2 * Ns * Nc;
+  }
+  if (procNz_ > 1) {
+    commVecLength[Z_DIM] = Lx_ * Ly_ * Lt_ / 2 * Ns * Nc;
+  }
+  if (procNt_ > 1) {
+    commVecLength[T_DIM] = Lx_ * Ly_ * Lz_ / 2 * Ns * Nc;
+  }
+
+  for (int dim = X_DIM; dim < Nd; dim++) {
+    if (commVecLength[dim] == 0) { // commVecLength[dim] == 0时说明这个方向不通信，没有必要sendInit
+      continue;
+    }
+    fwdRank = qcuComm_->getNeighborRank(dim, FWD);
+    bwdRank = qcuComm_->getNeighborRank(dim, BWD);
+
+    sendBufFWD = memPool_->h_send_buffer[dim][FWD];
+    sendBufBWD = memPool_->h_send_buffer[dim][BWD];
+    msgHandler_->msgSendInit(dim, fwdRank, bwdRank, commVecLength[dim], sendBufFWD, sendBufBWD);
+
+    recvBufFWD = memPool_->h_recv_buffer[dim][FWD];
+    recvBufBWD = memPool_->h_recv_buffer[dim][BWD];
+    msgHandler_->msgRecvInit(dim, fwdRank, bwdRank, commVecLength[dim], recvBufFWD, recvBufBWD);
+  }
+}
 END_NAMESPACE(qcu)
 
 static qcu::Qcu *qcu_ptr = nullptr;
