@@ -381,6 +381,12 @@ void WilsonDslash::preDslashMPI(int dim, int dir, int daggerFlag) {
       cudaMemcpyAsync(h_fermionOut, fermionOut, vol * Ns * Nc * 2 * sizeof(double), cudaMemcpyDeviceToHost, stream));
 }
 void WilsonDslash::dslashMPIIsendrecv(int dim) {
+#ifdef MPI_START_SENDRECV
+  MPI_Start(&(dslashParam_->msgHandler->mpiSendRequest[dim][FWD]));
+  MPI_Start(&(dslashParam_->msgHandler->mpiSendRequest[dim][BWD]));
+  MPI_Start(&(dslashParam_->msgHandler->mpiRecvRequest[dim][FWD]));
+  MPI_Start(&(dslashParam_->msgHandler->mpiRecvRequest[dim][BWD]));
+#else
   int sendLength;
   switch (dim) {
     case X_DIM:
@@ -434,6 +440,7 @@ void WilsonDslash::dslashMPIIsendrecv(int dim) {
     CHECK_MPI(MPI_Irecv(recvbuf, sendLength * 2, MPI_DOUBLE, src, BWD, MPI_COMM_WORLD,
                         &dslashParam_->msgHandler->mpiRecvRequest[dim][FWD]));
   }
+#endif
 }
 
 void WilsonDslash::dslashMPIWait(int dim) {
@@ -460,6 +467,9 @@ void WilsonDslash::dslashMPIWait(int dim) {
     CHECK_MPI(MPI_Wait(&dslashParam_->msgHandler->mpiRecvRequest[dim][FWD], MPI_STATUS_IGNORE));
     CHECK_MPI(MPI_Wait(&dslashParam_->msgHandler->mpiRecvRequest[dim][BWD], MPI_STATUS_IGNORE));
 
+    CHECK_MPI(MPI_Wait(&dslashParam_->msgHandler->mpiSendRequest[dim][FWD], MPI_STATUS_IGNORE));
+    CHECK_MPI(MPI_Wait(&dslashParam_->msgHandler->mpiSendRequest[dim][BWD], MPI_STATUS_IGNORE));
+
     CHECK_CUDA(cudaMemcpyAsync(dslashParam_->memPool->d_recv_buffer[dim][FWD],
                                dslashParam_->memPool->h_recv_buffer[dim][FWD], sendLength * 2 * sizeof(double),
                                cudaMemcpyHostToDevice, stream1));
@@ -467,20 +477,6 @@ void WilsonDslash::dslashMPIWait(int dim) {
                                dslashParam_->memPool->h_recv_buffer[dim][BWD], sendLength * 2 * sizeof(double),
                                cudaMemcpyHostToDevice, stream1));
   }
-
-  // if (dslashParam_->Nx > 1) {
-  //   sendLength = dslashParam_->Ly * dslashParam_->Lz * dslashParam_->Lt / 2 * Ns * Nc;
-  //   CHECK_MPI(MPI_Wait(&dslashParam_->msgHandler->mpiRecvRequest[X_DIM][FWD], MPI_STATUS_IGNORE));
-  //   CHECK_MPI(MPI_Wait(&dslashParam_->msgHandler->mpiRecvRequest[X_DIM][BWD], MPI_STATUS_IGNORE));
-  //   cudaStream_t streamXF = dslashParam_->commStreams[X_DIM * DIRECTIONS + FWD];
-  //   cudaStream_t streamXB = dslashParam_->commStreams[X_DIM * DIRECTIONS + BWD];
-  //   CHECK_CUDA(cudaMemcpyAsync(dslashParam_->memPool->d_recv_buffer[X_DIM][FWD],
-  //                              dslashParam_->memPool->h_recv_buffer[X_DIM][FWD], sendLength * 2 * sizeof(double),
-  //                              cudaMemcpyHostToDevice, streamXF));
-  //   CHECK_CUDA(cudaMemcpyAsync(dslashParam_->memPool->d_recv_buffer[X_DIM][BWD],
-  //                              dslashParam_->memPool->h_recv_buffer[X_DIM][BWD], sendLength * 2 * sizeof(double),
-  //                              cudaMemcpyHostToDevice, streamXB));
-  // }
 }
 
 void WilsonDslash::MemcpyBarrier() {
