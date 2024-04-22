@@ -52,10 +52,10 @@ __global__ void complexReduceSum(void *result, void *src, int vectorLength) {
   __syncthreads();
 
   // reduce the shared memory
-  for (int stride = blockSize / 2; stride > 0; stride >>= 1) { // i represents the stride
-    if (localId < stride) {
-      complexSharedMemory[localId] += complexSharedMemory[localId + stride];
-    }
+  for (int stride = blockSize / 2; stride > 0 && localId < stride; stride >>= 1) {  // i represents the stride
+                                                                                    // if (localId < stride) {
+    complexSharedMemory[localId] += complexSharedMemory[localId + stride];
+    // }
     __syncthreads();
   }
   // result is stored in complexSharedMemory[0]
@@ -81,10 +81,10 @@ __global__ void doubleReduceSum(void *result, void *src, int vectorLength) {
   __syncthreads();
 
   // reduce the shared memory
-  for (int stride = blockSize / 2; stride > 0; stride >>= 1) { // i represents the stride
-    if (localId < stride) {
-      doubleSharedMemory[localId] += doubleSharedMemory[localId + stride];
-    }
+  for (int stride = blockSize / 2; stride > 0 && localId < stride; stride >>= 1) {  // i represents the stride
+                                                                                    // if (localId < stride) {
+    doubleSharedMemory[localId] += doubleSharedMemory[localId + stride];
+    // }
     __syncthreads();
   }
   // result is stored in doubleSharedMemory[0]
@@ -115,7 +115,7 @@ __global__ void innerProduct(void *result, void *operand1, void *operand2, int v
   __syncthreads();
 
   // reduce the shared memory
-  for (int stride = blockSize / 2; stride > 0; stride >>= 1) { // i represents the stride
+  for (int stride = blockSize / 2; stride > 0; stride >>= 1) {  // i represents the stride
     if (localId < stride) {
       complexSharedMemory[localId] += complexSharedMemory[localId + stride];
     }
@@ -149,7 +149,7 @@ __global__ void norm2Square(void *result, void *operand, int vectorLength) {
   __syncthreads();
 
   // reduce the shared memory
-  for (int stride = blockSize / 2; stride > 0; stride >>= 1) { // i represents the stride
+  for (int stride = blockSize / 2; stride > 0; stride >>= 1) {  // i represents the stride
     if (localId < stride) {
       doubleSharedMemory[localId] += doubleSharedMemory[localId + stride];
     }
@@ -166,8 +166,7 @@ __global__ void norm2Square(void *result, void *operand, int vectorLength) {
 // ---------------------------------------
 // simple linear algebra
 /// Saxpy
-__global__ void saxpy_kernel(void *result, Complex scalar, void *operandX, void *operandY,
-                             int vectorLength) {
+__global__ void saxpy_kernel(void *result, Complex scalar, void *operandX, void *operandY, int vectorLength) {
   double2 *resultPtr;
   double2 *operandXPtr;
   double2 *operandYPtr;

@@ -1,4 +1,5 @@
 #pragma once
+
 #include "qcu_macro.cuh"
 
 BEGIN_NAMESPACE(qcu)
@@ -8,6 +9,8 @@ enum MemType { HOST_MEM = 0, DEVICE_MEM };
 // 内存池
 struct QcuMemPool {
 public:
+  // constexpr static int reduceBufferNum = 2;
+  // void *h_reduce_buffer[reduceBufferNum];
   // lattice desc
   // const QcuDesc& latticeDesc;
   // memory pool
@@ -19,10 +22,7 @@ public:
   void *h_send_buffer[Nd][DIRECTIONS];
   void *h_recv_buffer[Nd][DIRECTIONS];
 
-  // Host Gauge Buffer
-  // void *h_gauge_buffer[DIRECTIONS][2]; // 2: send=0, recv=1
-  // Device Gauge Buffer
-  // void *d_gauge_buffer[DIRECTIONS][2]; // 2: send=0, recv=1
+
 
   // get send bufer pointer
   void *getSendBuffer(MemType memType, int dim, int dir) {
@@ -76,6 +76,10 @@ public:
       allocateVector(Z_DIM, typeSize, zDimLength);
     if (tDimLength > 0)
       allocateVector(T_DIM, typeSize, tDimLength);
+    
+    // for (int i = 0; i < reduceBufferNum; i++) {
+    //   CHECK_CUDA(cudaMallocHost(&h_reduce_buffer[i], sizeof(double * 2)));
+    // }
   }
   // TODO: memory pool allocation
   void allocateVector(int dim, size_t typeSize, size_t length) {

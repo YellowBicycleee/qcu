@@ -1,7 +1,9 @@
-#include "solver/qcu_cg.h"
-#include <cassert>
 #include <cuda.h>
 #include <cuda_runtime.h>
+
+#include <cassert>
+
+#include "solver/qcu_cg.h"
 
 #define PRINT_RATIO
 
@@ -92,7 +94,7 @@ void QcuCG::allocateTempVectors() {
   int Lt = cgParam_->Lt;
 
   int vol = Lx * Ly * Lz * Lt;
-  int vectorLength = vol * Ns * Nc / 2; // /2because of even-odd preconditioning
+  int vectorLength = vol * Ns * Nc / 2;  // /2because of even-odd preconditioning
 
   CHECK_CUDA(cudaMalloc(&newEvenB_, vectorLength * sizeof(double) * 2));
   CHECK_CUDA(cudaMalloc(&newOddB_, vectorLength * sizeof(double) * 2));
@@ -145,9 +147,9 @@ bool QcuCG::odd_cg(void *resX, void *newOddB) {
   Complex reg2;
   Complex alpha;
   Complex beta;
-  double rsdNorm = 0.0; // 残差 norm
-  double bNorm = 0.0;   // b的范数
-                        // 终止条件：rsdNorm  < rsdTarget * bNorm
+  double rsdNorm = 0.0;  // 残差 norm
+  double bNorm = 0.0;    // b的范数
+                         // 终止条件：rsdNorm  < rsdTarget * bNorm
 
   // calc norm of input b vector
   norm2_(tmp1_, tmp2_, newOddB, vectorLength, cgParam_->stream1);
@@ -179,7 +181,7 @@ bool QcuCG::odd_cg(void *resX, void *newOddB) {
   while (numIterations_ < maxIterations_) {
     numIterations_++;
     // A * p
-    cgIterMV_Odd_(tmp1_, pVec_); // tmp1_ = A * pVec_
+    cgIterMV_Odd_(tmp1_, pVec_);  // tmp1_ = A * pVec_
 
     // alpha = r^T * r / p^T * A * p
     // reg1 = r^T * r
@@ -198,7 +200,7 @@ bool QcuCG::odd_cg(void *resX, void *newOddB) {
     // x = x + alpha * p
     saxpy_(resX, alpha, pVec_, resX, vectorLength, cgParam_->stream1);
     // r' = r - alpha * A * p
-    saxpy_(tmp2_, -alpha, tmp1_, residual_, vectorLength, cgParam_->stream2); // tmp2 = r'
+    saxpy_(tmp2_, -alpha, tmp1_, residual_, vectorLength, cgParam_->stream2);  // tmp2 = r'
     // calc r norm
     norm2_(tmp3_, tmp4_, residual_, vectorLength, cgParam_->stream2);
     CHECK_CUDA(cudaMemcpyAsync(&rsdNorm, tmp3_, sizeof(double), cudaMemcpyDeviceToHost, cgParam_->stream2));
@@ -241,7 +243,7 @@ bool QcuCG::odd_cg(void *resX, void *newOddB) {
 // evenB is inputEvenB rather than newEvenB
 bool QcuCG::even_cg(void *resEvenX, void *evenB) {
   numIterations_++;
-  generateEvenB(resEvenX, evenB); // resEvenX is newEvenB
+  generateEvenB(resEvenX, evenB);  // resEvenX is newEvenB
   return true;
 }
 
@@ -265,21 +267,21 @@ void QcuCG::generateOddB(void *new_b, void *tempVec1, void *tempVec2) {
 
   dslashParam->parity = ODD_PARITY;
   dslashParam->daggerFlag = QCU_DAGGER_NO;
-  singleDslash_(tempVec1, evenB_); // tempVec1 = D_{oe}b_e
+  singleDslash_(tempVec1, evenB_);  // tempVec1 = D_{oe}b_e
 
   // tempVec1 = right_b = \kappa tempVec1 + b_o = \kappa D_{oe}b_e + b_o
   saxpy_(tempVec1, kappa, tempVec1, oddB_, vectorLength, cgParam_->stream1);
-  CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1)); // 现在已经确定tempVec1，暂时不再更改，也就是方程右侧right_b
+  CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));  // 现在已经确定tempVec1，暂时不再更改，也就是方程右侧right_b
 
   if (dslashType_ == DSLASH_WILSON) {
     // dagger
     dslashParam->parity = EVEN_PARITY;
     dslashParam->daggerFlag = QCU_DAGGER_YES;
-    singleDslash_(tempVec2, tempVec1); // tempVec2 = D^{\dagger}_{eo} right_b
+    singleDslash_(tempVec2, tempVec1);  // tempVec2 = D^{\dagger}_{eo} right_b
 
     dslashParam->parity = ODD_PARITY;
     dslashParam->daggerFlag = QCU_DAGGER_YES;
-    singleDslash_(new_b, tempVec2); // new_b = D^{\dagger}_{oe} D^{\dagger}_{eo} right_b
+    singleDslash_(new_b, tempVec2);  // new_b = D^{\dagger}_{oe} D^{\dagger}_{eo} right_b
 
     // new_b = tempVec1 - kappa ^ 2 * new_b
     //       = right_b - kappa ^ 2 * D^{\dagger}_{oe} D^{\dagger}_{eo} right_b
@@ -310,7 +312,7 @@ void QcuCG::generateEvenB(void *newEvenB, void *evenB) {
 
   dslashParam->parity = EVEN_PARITY;
   dslashParam->daggerFlag = QCU_DAGGER_NO;
-  singleDslash_(newEvenB, oddX_); // newEvenB = D_{eo} x_o
+  singleDslash_(newEvenB, oddX_);  // newEvenB = D_{eo} x_o
   // CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
   // CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream2));
 
@@ -324,14 +326,22 @@ void QcuCG::generateEvenB(void *newEvenB, void *evenB) {
 // resX = cgParam_->fermionOutX
 void QcuCG::qcuInvert() {
   bool res = false;
-  generateOddB(newOddB_, tmp1_, tmp2_); // first, generate new oddB
-
-  numIterations_ = 0; // 迭代次数重置
+#ifdef DEBUG
+  printf("start qcuInvert\n");
+#endif
+  generateOddB(newOddB_, tmp1_, tmp2_);  // first, generate new oddB
+#ifdef DEBUG
+  printf("generate odd b succeed\n");
+#endif
+  numIterations_ = 0;  // 迭代次数重置
   res = odd_cg(oddX_, newOddB_);
   if (!res) {
     printf("odd cg failed\n");
     return;
   }
+#ifdef DEBUG
+  printf("odd cg succeed\n");
+#endif
   res = even_cg(evenX_, evenB_);
   printf("CG inverter succeed in %d iterations\n", numIterations_);
 }

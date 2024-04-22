@@ -8,14 +8,34 @@ typedef void *_genvector;
 
 #ifdef QCU_CUDA_ENABLED
 
+enum COMM_TYPE { NCCL_COMM, MPI_COMM, MPI_CONTINUOUS_COMM };
+
+// template <>
+
+static COMM_TYPE reduce_type = MPI_COMM;
+
 void QcuInnerProd::operator()(_genvector result, _genvector temp_result, _genvector operand1, _genvector operand2,
                               int vectorLength, cudaStream_t stream) {
-  int gridSize = (vectorLength + blockSize - 1) / blockSize;
+  int gridSize = (vectorLength + blockSize - 1) / blockSize / 2;
   innerProduct<<<gridSize, blockSize, blockSize * sizeof(double) * 2, stream>>>(temp_result, operand1, operand2,
                                                                                 vectorLength);
   // reduce result
   complexReduceSum<<<1, blockSize, blockSize * sizeof(double) * 2, stream>>>(temp_result, temp_result, gridSize);
-  ncclAllReduce(temp_result, result, 2, ncclDouble, ncclSum, msgHandler->ncclComm, stream);
+  // interprocess reduce
+  if (reduce_type == NCCL_COMM) {
+    ncclAllReduce(temp_result, result, 2, ncclDouble, ncclSum, msgHandler->ncclComm, stream);
+  } else if (reduce_type == MPI_COMM) {
+    Complex temp_res;
+    Complex reduce_res;
+    CHECK_CUDA(cudaMemcpyAsync(&temp_res, temp_result, 2 * sizeof(double), cudaMemcpyDeviceToHost, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    MPI_Allreduce(&temp_res, &reduce_res, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    CHECK_CUDA(cudaMemcpyAsync(result, &reduce_res, 2 * sizeof(double), cudaMemcpyHostToDevice, stream));
+  } else if (reduce_type == MPI_CONTINUOUS_COMM) {
+
+  } else {
+    assert(0);
+  }
 }
 
 void QcuVectorAdd::operator()(_genvector result, _genvector operand1, _genvector operand2, int vectorLength,
@@ -36,14 +56,29 @@ void QcuVectorAdd::operator()(_genvector result, _genvector operand1, _genvector
 // norm2
 void QcuNorm2::operator()(_genvector result, _genvector temp_result, _genvector operand, int vectorLength,
                           cudaStream_t stream) {
-  int gridSize = (vectorLength + blockSize - 1) / blockSize;
+  int gridSize = (vectorLength + blockSize - 1) / blockSize / 2;
   // 第三个参数是字节大小
   norm2Square<<<gridSize, blockSize, blockSize * sizeof(double) * 2, stream>>>(temp_result, operand, vectorLength);
   // printf("QcuNorm2:: %d %d\n", gridSize, blockSize);
   doubleReduceSum<<<1, blockSize, blockSize * sizeof(double), stream>>>(temp_result, temp_result, gridSize);
 
-  ncclAllReduce(temp_result, result, 1, ncclDouble, ncclSum, msgHandler->ncclComm, stream);
-  doubleSqrt<<<1, 1, 0, stream>>>(result, result); // sqrt
+  // ncclAllReduce(temp_result, result, 1, ncclDouble, ncclSum, msgHandler->ncclComm, stream);
+    // interprocess reduce
+  if (reduce_type == NCCL_COMM) {
+    ncclAllReduce(temp_result, result, 1, ncclDouble, ncclSum, msgHandler->ncclComm, stream);
+  } else if (reduce_type == MPI_COMM) {
+    double temp_res;
+    double reduce_res;
+    CHECK_CUDA(cudaMemcpyAsync(&temp_res, temp_result, sizeof(double), cudaMemcpyDeviceToHost, stream));
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+    MPI_Allreduce(&temp_res, &reduce_res, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    CHECK_CUDA(cudaMemcpyAsync(result, &reduce_res, sizeof(double), cudaMemcpyHostToDevice, stream));
+  } else if (reduce_type == MPI_CONTINUOUS_COMM) {
+
+  } else {
+    assert(0);
+  }
+  doubleSqrt<<<1, 1, 0, stream>>>(result, result);  // sqrt
 }
 
 // result = alpha * operand1 + operand2
@@ -79,4 +114,4 @@ void complexDivideGPU(void *res, void *a, void *b, cudaStream_t stream) {
   complexDivideKernel<<<1, 1, 0, stream>>>(res, a, b);
 }
 #endif
-  END_NAMESPACE(qcu)
+END_NAMESPACE(qcu)
