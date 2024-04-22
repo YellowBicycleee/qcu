@@ -4,6 +4,10 @@
 #define BEGIN_NAMESPACE(_) namespace _ {
 #define END_NAMESPACE(_) }
 
+
+
+#define MPI_START_SENDRECV
+
 enum DIMS { X_DIM = 0, Y_DIM, Z_DIM, T_DIM, Nd };
 
 enum DIRS { BWD = 0, FWD = 1, DIRECTIONS };
