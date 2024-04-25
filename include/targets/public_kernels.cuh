@@ -26,6 +26,25 @@ static __device__ __forceinline__ void loadGauge(Complex *u_local, void *gauge_p
   }
   reconstructSU3(u_local);
 }
+// version 2 does not reconstruct the SU3 matrix, only stores the 12 complex numbers
+static __device__ __forceinline__ void loadGauge2(Complex *u_local, void *gauge_ptr, int direction, const Point &p,
+                                                  int sub_Lx, int Ly, int Lz, int Lt) {
+  Complex *u = p.getCoalescedGaugeAddr(gauge_ptr, direction, sub_Lx, Ly, Lz, Lt);
+  int half_vol = sub_Lx * Ly * Lz * Lt;
+  for (int i = 0; i < (Nc - 1) * Nc; i++) {
+    u_local[i] = *u;
+    u += half_vol;
+  }
+}
+static __device__ __forceinline__ void storeGauge(void *gauge_ptr, Complex *u_local, int direction, const Point &p,
+                                                  int sub_Lx, int Ly, int Lz, int Lt) {
+  Complex *u = p.getCoalescedGaugeAddr(gauge_ptr, direction, sub_Lx, Ly, Lz, Lt);
+  int half_vol = sub_Lx * Ly * Lz * Lt;
+  for (int i = 0; i < (Nc - 1) * Nc; i++) {
+    *u = u_local[i];
+    u += half_vol;
+  }
+}
 
 // COALESCED
 static __device__ __forceinline__ void loadVector(Complex *src_local, void *fermion_in, const Point &p, int sub_Lx,
