@@ -4,22 +4,23 @@
 
 BEGIN_NAMESPACE(qcu)
 class WilsonDslash : public Dslash {
-private:
+ private:
   void preDslash(int dim, int dir, int daggerFlag = 0);
   void postDslash(int dim, int dir, int daggerFlag = 0);
   void preDslashMPI(int dim, int dir, int daggerFlag = 0);
+  void postDslashMPI(int dim, int dir, int daggerFlag = 0);
   // void postDslashMPI(int dim, int dir, int daggerFlag = 0);
   void dslashNcclIsendrecv(int dim);
   void dslashMPIIsendrecv(int dim);
   void dslashNcclWait();
-  void MemcpyBarrier();
+  void cudaStreamBarrier();
   void dslashMPIWait(int dim);
 
-public:
+ public:
   WilsonDslash(DslashParam *param, int blockSize = 256) : Dslash(param, blockSize) {}
   virtual ~WilsonDslash() {}
-  virtual void apply();    // to implement
-  virtual void preApply(); // to implement
+  virtual void apply();     // to implement
+  virtual void preApply();  // to implement
   virtual void postApply();
 
   virtual void preApply2();
