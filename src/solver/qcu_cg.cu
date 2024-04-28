@@ -5,7 +5,7 @@
 
 #include "solver/qcu_cg.h"
 
-#define PRINT_RATIO
+// #define PRINT_DIFF
 
 BEGIN_NAMESPACE(qcu)
 static inline bool ifConverge(double target, double rsdNorm, double bNorm) { return rsdNorm < target * bNorm; }
@@ -207,7 +207,7 @@ bool QcuCG::odd_cg(void *resX, void *newOddB) {
     CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
     CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream2));
 
-#ifdef PRINT_RATIO
+#ifdef PRINT_DIFF
     {
       printf("cg iteration %d, norm(r) = %e, norm(b) = %e, norm(r) / norm(b) = %e, target = %e\n", numIterations_,
              rsdNorm, bNorm, rsdNorm / bNorm, rsdTarget_);
