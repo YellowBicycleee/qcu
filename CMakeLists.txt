@@ -3,6 +3,9 @@ include_directories(/usr/lib/x86_64-linux-gnu/openmpi/include)
 set(CMAKE_CUDA_ARCHITECTURES 70)    # for V100
 set(CMAKE_BUILD_TYPE Release)
 
+set(CMAKE_CXX_STANDARD 14)
+# set(CMAKE_C_STANDARD 11)
+
 project(QCU LANGUAGES C CXX CUDA) # project name = ${PROJECT_NAME}
 
 # set(SOURCES
