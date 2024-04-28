@@ -14,7 +14,7 @@ class WilsonDslash : public Dslash {
   void dslashMPIIsendrecv(int dim);
   void dslashNcclWait();
   void cudaStreamBarrier();
-  void dslashMPIWait(int dim);
+  void dslashMPIWait(int dim, int dir);
 
  public:
   WilsonDslash(DslashParam *param, int blockSize = 256) : Dslash(param, blockSize) {}
