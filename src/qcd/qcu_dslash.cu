@@ -16,8 +16,8 @@ void DslashMV::operator()(_genvector result, _genvector src, cudaStream_t stream
   dslash->apply();
   dslash->postApply2();
 
-  CHECK_CUDA(cudaStreamSynchronize(dslash->dslashParam_->stream1));
-  CHECK_CUDA(cudaStreamSynchronize(dslash->dslashParam_->stream2));
+  // CHECK_CUDA(cudaStreamSynchronize(dslash->dslashParam_->stream1));
+  // CHECK_CUDA(cudaStreamSynchronize(dslash->dslashParam_->stream2));
 }
 
 END_NAMESPACE(qcu)

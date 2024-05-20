@@ -10,9 +10,8 @@ typedef void *_genvector;
 
 enum COMM_TYPE { NCCL_COMM, MPI_COMM, MPI_CONTINUOUS_COMM };
 
-// template <>
-
 static COMM_TYPE reduce_type = MPI_COMM;
+// static COMM_TYPE reduce_type = NCCL_COMM;
 
 void QcuInnerProd::operator()(_genvector result, _genvector temp_result, _genvector operand1, _genvector operand2,
                               int vectorLength, cudaStream_t stream) {
@@ -23,7 +22,9 @@ void QcuInnerProd::operator()(_genvector result, _genvector temp_result, _genvec
   complexReduceSum<<<1, blockSize, blockSize * sizeof(double) * 2, stream>>>(temp_result, temp_result, gridSize);
   // interprocess reduce
   if (reduce_type == NCCL_COMM) {
+#ifdef USE_NCCL
     ncclAllReduce(temp_result, result, 2, ncclDouble, ncclSum, msgHandler->ncclComm, stream);
+#endif
   } else if (reduce_type == MPI_COMM) {
     Complex temp_res;
     Complex reduce_res;
@@ -32,7 +33,6 @@ void QcuInnerProd::operator()(_genvector result, _genvector temp_result, _genvec
     MPI_Allreduce(&temp_res, &reduce_res, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
     CHECK_CUDA(cudaMemcpyAsync(result, &reduce_res, 2 * sizeof(double), cudaMemcpyHostToDevice, stream));
   } else if (reduce_type == MPI_CONTINUOUS_COMM) {
-
   } else {
     assert(0);
   }
@@ -63,9 +63,11 @@ void QcuNorm2::operator()(_genvector result, _genvector temp_result, _genvector 
   doubleReduceSum<<<1, blockSize, blockSize * sizeof(double), stream>>>(temp_result, temp_result, gridSize);
 
   // ncclAllReduce(temp_result, result, 1, ncclDouble, ncclSum, msgHandler->ncclComm, stream);
-    // interprocess reduce
+  // interprocess reduce
   if (reduce_type == NCCL_COMM) {
+#ifdef USE_NCCL
     ncclAllReduce(temp_result, result, 1, ncclDouble, ncclSum, msgHandler->ncclComm, stream);
+#endif
   } else if (reduce_type == MPI_COMM) {
     double temp_res;
     double reduce_res;
@@ -74,7 +76,6 @@ void QcuNorm2::operator()(_genvector result, _genvector temp_result, _genvector 
     MPI_Allreduce(&temp_res, &reduce_res, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
     CHECK_CUDA(cudaMemcpyAsync(result, &reduce_res, sizeof(double), cudaMemcpyHostToDevice, stream));
   } else if (reduce_type == MPI_CONTINUOUS_COMM) {
-
   } else {
     assert(0);
   }

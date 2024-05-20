@@ -4,19 +4,19 @@
 #include <mpi.h>
 BEGIN_NAMESPACE(qcu)
 
-void MsgHandler::initNccl() {
-  int myRank, numProcess;
-  CHECK_MPI(MPI_Comm_rank(MPI_COMM_WORLD, &myRank));
-  CHECK_MPI(MPI_Comm_size(MPI_COMM_WORLD, &numProcess));
-  if (myRank == 0) {
-    CHECK_NCCL(ncclGetUniqueId(&ncclId));
-  }
-  CHECK_MPI(MPI_Bcast((void *)&ncclId, sizeof(ncclId), MPI_BYTE, 0, MPI_COMM_WORLD));
+// void MsgHandler::initNccl() {
+//   int myRank, numProcess;
+//   CHECK_MPI(MPI_Comm_rank(MPI_COMM_WORLD, &myRank));
+//   CHECK_MPI(MPI_Comm_size(MPI_COMM_WORLD, &numProcess));
+//   if (myRank == 0) {
+//     CHECK_NCCL(ncclGetUniqueId(&ncclId));
+//   }
+//   CHECK_MPI(MPI_Bcast((void *)&ncclId, sizeof(ncclId), MPI_BYTE, 0, MPI_COMM_WORLD));
 
-  CHECK_NCCL(ncclCommInitRank(&ncclComm, numProcess, ncclId, myRank));
-}
+//   CHECK_NCCL(ncclCommInitRank(&ncclComm, numProcess, ncclId, myRank));
+// }
 
-void MsgHandler::destroyNccl() { CHECK_NCCL(ncclCommDestroy(ncclComm)); }
+// void MsgHandler::destroyNccl() { CHECK_NCCL(ncclCommDestroy(ncclComm)); }
 
 QcuComm::QcuComm(int Nx, int Ny, int Nz, int Nt) {
   comm_grid_size[0] = Nx;

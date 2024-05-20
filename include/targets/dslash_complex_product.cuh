@@ -25,8 +25,7 @@ __device__ __forceinline__ void spinor_gauge_mul_add_vec<X_DIM, FWD>(Complex *u_
 
 #pragma unroll
   for (int i = 0; i < Nc; i++) {
-    temp1.clear2Zero();
-    temp2.clear2Zero();
+    temp1 = temp2 = 0; 
 
 #pragma unroll
     for (int j = 0; j < Nc; j++) {

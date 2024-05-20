@@ -111,14 +111,21 @@ struct DslashParam : public QcuParam {
 class Dslash {
  protected:
   int blockSize_;
+  // cudaEvent_t start_, stop_;
 
  public:
   DslashParam *dslashParam_;
-  Dslash(DslashParam *param, int blockSize = 256) : dslashParam_(param), blockSize_(blockSize) {}
-  virtual ~Dslash() {}
+  Dslash(DslashParam *param, int blockSize = 256) : dslashParam_(param), blockSize_(blockSize) {
+    // cudaEventCreate(&start_);
+    // cudaEventCreate(&stop_);
+  }
+  virtual ~Dslash() {
+    // cudaEventDestroy(start_);
+    // cudaEventDestroy(stop_);
+  }
   virtual void apply() = 0;
-  virtual void preApply() = 0;
-  virtual void postApply() = 0;
+  // virtual void preApply() = 0;
+  // virtual void postApply() = 0;
 
   virtual void preApply2() = 0;
   virtual void postApply2() = 0;

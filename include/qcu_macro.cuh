@@ -4,8 +4,6 @@
 #define BEGIN_NAMESPACE(_) namespace _ {
 #define END_NAMESPACE(_) }
 
-
-
 #define MPI_START_SENDRECV
 
 enum DIMS { X_DIM = 0, Y_DIM, Z_DIM, T_DIM, Nd };
@@ -78,4 +76,9 @@ END_NAMESPACE(qcu)
       fprintf(stderr, "NCCL error: %s\n", ncclGetErrorString(err)); \
       exit(1);                                                      \
     }                                                               \
+  } while (0)
+
+#define qcuPrintf(rank, fmt, ...)             \
+  do {                                        \
+    if (rank == 0) printf(fmt, ##__VA_ARGS__) \
   } while (0)

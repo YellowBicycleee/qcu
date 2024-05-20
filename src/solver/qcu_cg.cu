@@ -235,6 +235,7 @@ bool QcuCG::odd_cg(void *resX, void *newOddB) {
 
     CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream1));
     CHECK_CUDA(cudaStreamSynchronize(cgParam_->stream2));
+    // MPI_Barrier(MPI_COMM_WORLD);
   }
   return res;
 }
