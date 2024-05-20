@@ -8,7 +8,7 @@ enum MemType { HOST_MEM = 0, DEVICE_MEM };
 
 // 内存池
 struct QcuMemPool {
-public:
+ public:
   // constexpr static int reduceBufferNum = 2;
   // void *h_reduce_buffer[reduceBufferNum];
   // lattice desc
@@ -22,7 +22,9 @@ public:
   void *h_send_buffer[Nd][DIRECTIONS];
   void *h_recv_buffer[Nd][DIRECTIONS];
 
-
+  // p2p remote buffer
+  void *p2p_send_buffer[Nd][DIRECTIONS];
+  void *p2p_recv_buffer[Nd][DIRECTIONS];
 
   // get send bufer pointer
   void *getSendBuffer(MemType memType, int dim, int dir) {
@@ -30,7 +32,7 @@ public:
       return h_send_buffer[dim][dir];
     } else if (memType == DEVICE_MEM) {
       return d_send_buffer[dim][dir];
-    } else { // error
+    } else {  // error
       return nullptr;
     }
   }
@@ -40,7 +42,7 @@ public:
       return h_recv_buffer[dim][dir];
     } else if (memType == DEVICE_MEM) {
       return d_recv_buffer[dim][dir];
-    } else { // error
+    } else {  // error
       return nullptr;
     }
   }
@@ -66,17 +68,12 @@ public:
     // }
   }
 
-  void allocateAllVector(int xDimLength, int yDimLength, int zDimLength, int tDimLength,
-                         size_t typeSize) {
-    if (xDimLength > 0)
-      allocateVector(X_DIM, typeSize, xDimLength);
-    if (yDimLength > 0)
-      allocateVector(Y_DIM, typeSize, yDimLength);
-    if (zDimLength > 0)
-      allocateVector(Z_DIM, typeSize, zDimLength);
-    if (tDimLength > 0)
-      allocateVector(T_DIM, typeSize, tDimLength);
-    
+  void allocateAllVector(int xDimLength, int yDimLength, int zDimLength, int tDimLength, size_t typeSize) {
+    if (xDimLength > 0) allocateVector(X_DIM, typeSize, xDimLength);
+    if (yDimLength > 0) allocateVector(Y_DIM, typeSize, yDimLength);
+    if (zDimLength > 0) allocateVector(Z_DIM, typeSize, zDimLength);
+    if (tDimLength > 0) allocateVector(T_DIM, typeSize, tDimLength);
+
     // for (int i = 0; i < reduceBufferNum; i++) {
     //   CHECK_CUDA(cudaMallocHost(&h_reduce_buffer[i], sizeof(double * 2)));
     // }
@@ -93,9 +90,12 @@ public:
       // DEVICE MEM
       CHECK_CUDA(cudaMalloc(&d_send_buffer[dim][dir], typeSize * length));
       CHECK_CUDA(cudaMalloc(&d_recv_buffer[dim][dir], typeSize * length));
+      // P2P REMOTE MEM
+      CHECK_CUDA(cudaMalloc(&p2p_send_buffer[dim][dir], typeSize * length));
+      CHECK_CUDA(cudaMalloc(&p2p_recv_buffer[dim][dir], typeSize * length));
 #ifdef DEBUG
-      printf("size = %lu send / recv buffer allocated\ndim = %d, sendbuffer = %p, recvbuffer = %p\n",
-             typeSize * length, dim, d_send_buffer[dim][dir], d_recv_buffer[dim][dir]);
+      printf("size = %lu send / recv buffer allocated\ndim = %d, sendbuffer = %p, recvbuffer = %p\n", typeSize * length,
+             dim, d_send_buffer[dim][dir], d_recv_buffer[dim][dir]);
 #endif
     }
   }
@@ -123,6 +123,15 @@ public:
         CHECK_CUDA(cudaFree(d_recv_buffer[dim][dir]));
         d_recv_buffer[dim][dir] = nullptr;
       }
+      // P2P REMOTE MEM
+      if (p2p_send_buffer[dim][dir] != nullptr) {
+        CHECK_CUDA(cudaFree(p2p_send_buffer[dim][dir]));
+        p2p_send_buffer[dim][dir] = nullptr;
+      }
+      if (p2p_recv_buffer[dim][dir] != nullptr) {
+        CHECK_CUDA(cudaFree(p2p_recv_buffer[dim][dir]));
+        p2p_recv_buffer[dim][dir] = nullptr;
+      }
     }
   }
 
@@ -149,6 +158,18 @@ public:
       return nullptr;
     }
     return d_recv_buffer[dim][dir];
+  }
+  void *getP2PSendBuffer(int dim, int dir) {
+    if (dim < 0 || dim >= Nd || dir < 0 || dir >= DIRECTIONS) {
+      return nullptr;
+    }
+    return p2p_send_buffer[dim][dir];
+  }
+  void *getP2PRecvBuffer(int dim, int dir) {
+    if (dim < 0 || dim >= Nd || dir < 0 || dir >= DIRECTIONS) {
+      return nullptr;
+    }
+    return p2p_recv_buffer[dim][dir];
   }
 
   ~QcuMemPool() {

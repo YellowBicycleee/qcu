@@ -3,7 +3,9 @@
 #include <assert.h>
 #include <cuda.h>
 #include <mpi.h>
+#ifdef USE_NCCL
 #include <nccl.h>
+#endif
 
 #include <cstdio>
 
@@ -39,12 +41,15 @@ struct MsgHandler {
   MPI_Status mpiSendStatus[Nd][DIRECTIONS];  // MPI_Status
   MPI_Status mpiRecvStatus[Nd][DIRECTIONS];
 
+#ifdef USE_NCCL
   // NCCL member
   ncclComm_t ncclComm;
   ncclUniqueId ncclId;
+#endif
 
   // TODO: change to option Init? (consider if necessary)
-  MsgHandler(CommOption opt = USE_NCCL) : opt(opt) { initNccl(); }
+  MsgHandler(CommOption opt = USE_NCCL) : opt(opt) { /*initNccl();*/
+  }
 
   // msgSendInit 和msgRecvInit函数为外部留，当前设计不利于一次性初始化
   void msgSendInit(int dim, int fwdRank, int bwdRank, int complexLength, void* sendBufFWD, void* sendBufBWD) {
@@ -60,11 +65,12 @@ struct MsgHandler {
                             &mpiRecvRequest[dim][BWD]));
   }
 
-  ~MsgHandler() { destroyNccl(); }
+  ~MsgHandler() { /*destroyNccl();*/
+  }
 
  private:
-  void initNccl();
-  void destroyNccl();
+  // void initNccl();
+  // void destroyNccl();
 };
 
 class QcuComm {
@@ -74,7 +80,7 @@ class QcuComm {
   int processCoord[Nd];               // coord of process in the grid
   int comm_grid_size[Nd];             // int[4]     = {Nx, Ny, Nz, Nt}
   int neighbor_rank[Nd][DIRECTIONS];  // int[4][2]
-
+  cudaIpcMemHandle_t p2p_handles[Nd][DIRECTIONS];
   int calcAdjProcess(int dim, int dir);
 
  public:
